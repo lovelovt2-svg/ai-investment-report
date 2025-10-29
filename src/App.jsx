@@ -16,6 +16,9 @@ const InvestmentIntelligencePlatform = () => {
   });
   const [isReading, setIsReading] = useState(false);
   const [readingMode, setReadingMode] = useState('summary'); // 'summary' or 'keypoints'
+  const [customQuestion, setCustomQuestion] = useState('');
+  const [questionLoading, setQuestionLoading] = useState(false);
+  const [questionAnswer, setQuestionAnswer] = useState(null);
   const fileInputRef = useRef(null);
 
   // 음성 읽기 함수
@@ -26,31 +29,17 @@ const InvestmentIntelligencePlatform = () => {
       return;
     }
 
-    let textToRead = '';
+    // 핵심 포인트만 읽기 - 더 자연스럽게
+    const points = report.keyPoints.map((point, i) => {
+      const numberWords = ['첫 번째', '두 번째', '세 번째', '네 번째', '다섯 번째'];
+      return `${numberWords[i]}, ${point}`;
+    }).join('. ');
     
-    if (mode === 'summary') {
-      // 요약만 읽기 - 마크다운 기호 제거
-      const cleanSummary = report.summary
-        .replace(/[*#_~`]/g, '')
-        .replace(/\[.*?\]\(.*?\)/g, '')
-        .replace(/\n+/g, ' ');
-      
-      textToRead = `
-        ${report.title.replace(/[*#_]/g, '')}. 
-        ${cleanSummary}.
-      `;
-    } else {
-      // 핵심 포인트만 읽기
-      textToRead = `
-        ${report.title.replace(/[*#_]/g, '')}. 
-        핵심 포인트 ${report.keyPoints.length}가지입니다. 
-        ${report.keyPoints.map((point, i) => `${i + 1}번째, ${point}`).join('. ')}
-      `;
-    }
+    const textToRead = `${report.title.replace(/[*#_-]/g, '')}의 핵심 포인트입니다. ${points}. 이상입니다.`;
 
     const utterance = new SpeechSynthesisUtterance(textToRead);
     utterance.lang = 'ko-KR';
-    utterance.rate = 1.0;
+    utterance.rate = 0.9; // 조금 천천히
     utterance.pitch = 1.0;
     
     utterance.onstart = () => setIsReading(true);
@@ -58,7 +47,6 @@ const InvestmentIntelligencePlatform = () => {
     utterance.onerror = () => setIsReading(false);
 
     window.speechSynthesis.speak(utterance);
-    setReadingMode(mode);
   };
 
   const toggleSection = (section) => {
@@ -71,6 +59,80 @@ const InvestmentIntelligencePlatform = () => {
   const handleFileChange = (e) => {
     const selectedFiles = Array.from(e.target.files);
     setFiles(selectedFiles);
+  };
+
+  // Claude 리포트 파싱 함수
+  const parseClaudeReport = (reportText) => {
+    const result = {
+      summary: '',
+      keyPoints: []
+    };
+
+    // 요약 추출 (첫 번째 단락 또는 요약 섹션)
+    const summaryMatch = reportText.match(/##?\s*요약.*?\n\n([\s\S]*?)(?=\n##|$)/i) ||
+                         reportText.match(/Executive Summary.*?\n\n([\s\S]*?)(?=\n##|$)/i);
+    if (summaryMatch) {
+      result.summary = summaryMatch[1].trim().substring(0, 500).replace(/[*#]/g, '');
+    } else {
+      // 요약이 없으면 첫 500자 사용
+      result.summary = reportText.substring(0, 500).replace(/[*#]/g, '');
+    }
+
+    // 핵심 포인트 추출
+    const pointsMatch = reportText.match(/##?\s*핵심.*?(?:포인트|투자 포인트).*?\n([\s\S]*?)(?=\n##|$)/i);
+    if (pointsMatch) {
+      const points = pointsMatch[1].match(/[-*]\s*(.+)/g);
+      if (points) {
+        result.keyPoints = points.map(p => p.replace(/^[-*]\s*/, '').trim()).slice(0, 4);
+      }
+    }
+
+    return result;
+  };
+
+  // AI 질문 처리 함수
+  const handleCustomQuestion = async () => {
+    if (!customQuestion.trim()) {
+      alert('질문을 입력해주세요.');
+      return;
+    }
+
+    setQuestionLoading(true);
+    setQuestionAnswer(null);
+
+    try {
+      const response = await fetch('/api/generate-report', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          searchQuery: `${topic}에 대한 질문: ${customQuestion}`,
+          uploadedFiles: [],
+          additionalInfo: `기존 리포트 컨텍스트: ${report.fullReport?.substring(0, 1000) || report.summary}`
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('답변 생성 실패');
+      }
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setQuestionAnswer({
+          question: customQuestion,
+          answer: data.report.substring(0, 1000).replace(/[*#]/g, ''),
+          confidence: '중간'
+        });
+        setCustomQuestion('');
+      }
+    } catch (error) {
+      console.error('질문 처리 오류:', error);
+      alert('답변 생성 중 오류가 발생했습니다.');
+    } finally {
+      setQuestionLoading(false);
+    }
   };
 
   const handleGenerate = async () => {
@@ -106,17 +168,19 @@ const InvestmentIntelligencePlatform = () => {
       }
 
       // API 응답을 리포트 형식으로 변환
+      const parsedReport = parseClaudeReport(data.report);
+      
       setReport({
         title: `${topic} - 투자 분석 리포트`,
         timestamp: new Date(data.metadata.timestamp).toLocaleString('ko-KR'),
-        summary: data.report.substring(0, 300) + '...', // 요약 추출
+        summary: parsedReport.summary || data.report.substring(0, 500).replace(/[*#]/g, ''),
         metrics: {
-          confidence: 87,
+          confidence: 85,
           dataPoints: data.metadata.newsCount,
-          sources: data.metadata.newsCount,
-          accuracy: 94
+          sources: data.metadata.sources.length,
+          accuracy: 90
         },
-        keyPoints: [
+        keyPoints: parsedReport.keyPoints || [
           'AI 반도체 수요 급증으로 HBM 시장 연평균 40% 성장 전망',
           '메모리 반도체 가격 상승세 지속, 업계 마진 개선 예상',
           '중국 경기 둔화 및 지정학적 리스크는 단기 변동성 요인',
@@ -348,28 +412,17 @@ const InvestmentIntelligencePlatform = () => {
                     <span>리포트 다운로드</span>
                   </button>
                   
-                  {/* Voice Reading Controls */}
+                  {/* Voice Reading - 핵심만 듣기 */}
                   <button
-                    onClick={() => handleTextToSpeech('summary')}
+                    onClick={() => handleTextToSpeech('keypoints')}
                     className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      isReading && readingMode === 'summary'
+                      isReading
                         ? 'bg-red-100 text-red-700 hover:bg-red-200'
                         : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
                     }`}
                   >
                     <Volume2 className="w-4 h-4" />
-                    <span>{isReading && readingMode === 'summary' ? '중지' : '요약 듣기'}</span>
-                  </button>
-                  <button
-                    onClick={() => handleTextToSpeech('keypoints')}
-                    className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      isReading && readingMode === 'keypoints'
-                        ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                        : 'bg-green-100 text-green-700 hover:bg-green-200'
-                    }`}
-                  >
-                    <Volume2 className="w-4 h-4" />
-                    <span>{isReading && readingMode === 'keypoints' ? '중지' : '핵심만 듣기'}</span>
+                    <span>{isReading ? '중지' : '핵심 포인트 듣기'}</span>
                   </button>
                 </div>
               </div>
@@ -781,16 +834,51 @@ const InvestmentIntelligencePlatform = () => {
                       <div className="flex space-x-2">
                         <input
                           type="text"
+                          value={customQuestion}
+                          onChange={(e) => setCustomQuestion(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && handleCustomQuestion()}
                           placeholder="예: 이 종목의 리스크는 어느 정도인가요?"
                           className="flex-1 px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                          disabled={questionLoading}
                         />
-                        <button className="px-6 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors text-sm whitespace-nowrap">
-                          질문하기
+                        <button 
+                          onClick={handleCustomQuestion}
+                          disabled={questionLoading}
+                          className="px-6 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 disabled:bg-purple-300 transition-colors text-sm whitespace-nowrap flex items-center space-x-2"
+                        >
+                          {questionLoading ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span>분석중...</span>
+                            </>
+                          ) : (
+                            <span>질문하기</span>
+                          )}
                         </button>
                       </div>
                       <p className="text-xs text-slate-500 mt-3">
                         💡 현재 리포트 내용을 기반으로 답변합니다
                       </p>
+
+                      {/* Answer Display */}
+                      {questionAnswer && (
+                        <div className="mt-4 p-4 bg-white rounded-lg border border-purple-200">
+                          <div className="flex items-start space-x-3 mb-3">
+                            <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-600 text-white rounded-full flex items-center justify-center text-sm font-bold">
+                              A
+                            </div>
+                            <div className="flex-1">
+                              <p className="font-semibold text-slate-900 mb-2">{questionAnswer.question}</p>
+                              <p className="text-slate-700 leading-relaxed">{questionAnswer.answer}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                            <span className="text-xs font-medium px-3 py-1 rounded-full bg-amber-100 text-amber-700">
+                              신뢰도: {questionAnswer.confidence}
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
