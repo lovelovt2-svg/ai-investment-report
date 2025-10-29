@@ -82,49 +82,79 @@ const InvestmentIntelligencePlatform = () => {
       }
     };
 
-    // 요약 추출
-    const summaryMatch = reportText.match(/##?\s*요약.*?\n\n([\s\S]*?)(?=\n##|$)/i) ||
-                         reportText.match(/Executive Summary.*?\n\n([\s\S]*?)(?=\n##|$)/i);
+    // 요약 추출 - 전체적인 개요
+    const summaryMatch = reportText.match(/##?\s*(?:요약|Executive Summary).*?\n+([\s\S]*?)(?=\n##|$)/i);
     if (summaryMatch) {
-      result.summary = summaryMatch[1].trim().replace(/[*#]/g, '');
+      // 요약 섹션의 텍스트만 추출 (리스트 제외)
+      const summaryText = summaryMatch[1]
+        .split('\n')
+        .filter(line => !line.trim().match(/^[-*]\s/)) // 리스트 항목 제외
+        .join('\n')
+        .trim()
+        .replace(/[*#]/g, '');
+      result.summary = summaryText || reportText.substring(0, 800).replace(/[*#]/g, '');
     } else {
-      // 요약이 없으면 첫 1000자 사용
-      result.summary = reportText.substring(0, 1000).replace(/[*#]/g, '');
+      // 요약 섹션이 없으면 첫 부분 사용
+      result.summary = reportText.substring(0, 800).replace(/[*#]/g, '');
     }
 
-    // 핵심 포인트 추출
-    const pointsMatch = reportText.match(/##?\s*핵심.*?(?:포인트|투자 포인트).*?\n([\s\S]*?)(?=\n##|$)/i);
+    // 핵심 포인트 추출 - 주요 투자 포인트만
+    const pointsMatch = reportText.match(/##?\s*(?:핵심|주요|투자).*?포인트.*?\n+([\s\S]*?)(?=\n##|$)/i);
     if (pointsMatch) {
       const points = pointsMatch[1].match(/[-*]\s*(.+)/g);
       if (points) {
-        result.keyPoints = points.map(p => p.replace(/^[-*]\s*/, '').replace(/[*#]/g, '').trim()).slice(0, 4);
+        result.keyPoints = points
+          .map(p => p.replace(/^[-*]\s*/, '').replace(/[*#]/g, '').trim())
+          .filter(p => p.length > 10) // 너무 짧은 것 제외
+          .slice(0, 4);
       }
+    }
+    
+    // 핵심 포인트가 없으면 리포트에서 주요 문장 추출
+    if (result.keyPoints.length === 0) {
+      const sentences = reportText
+        .split(/[.!?]\s+/)
+        .filter(s => s.length > 30 && s.length < 200)
+        .slice(0, 4)
+        .map(s => s.replace(/[*#]/g, '').trim());
+      result.keyPoints = sentences;
     }
 
     // 투자 의견 추출
-    const opinionMatch = reportText.match(/투자.*?(?:의견|등급)[:\s]*(BUY|SELL|HOLD)/i);
+    const opinionMatch = reportText.match(/(?:투자|매매).*?(?:의견|등급|추천)[:\s]*(BUY|매수|SELL|매도|HOLD|중립|보유)/i);
     if (opinionMatch) {
-      result.recommendation.opinion = opinionMatch[1].toUpperCase();
+      const opinion = opinionMatch[1].toUpperCase();
+      if (opinion.includes('BUY') || opinion.includes('매수')) {
+        result.recommendation.opinion = 'BUY';
+      } else if (opinion.includes('SELL') || opinion.includes('매도')) {
+        result.recommendation.opinion = 'SELL';
+      } else {
+        result.recommendation.opinion = 'HOLD';
+      }
     }
 
-    // 목표주가 추출
-    const targetMatch = reportText.match(/목표.*?주가[:\s]*([0-9,]+)\s*원/i);
+    // 목표주가 추출 - 더 다양한 패턴
+    const targetMatch = reportText.match(/목표.*?(?:주가|가격)[:\s]*([0-9,]+)\s*원/i) ||
+                        reportText.match(/적정.*?(?:주가|가격)[:\s]*([0-9,]+)\s*원/i);
     if (targetMatch) {
-      result.recommendation.targetPrice = targetMatch[1] + '원';
+      result.recommendation.targetPrice = targetMatch[1].replace(/,/g, '') + '원';
     }
 
-    // 현재가 추출
-    const currentMatch = reportText.match(/현재.*?주?가[:\s]*([0-9,]+)\s*원/i);
+    // 현재가 추출 - 더 다양한 패턴
+    const currentMatch = reportText.match(/현재.*?(?:주가|가격|시세)[:\s]*([0-9,]+)\s*원/i) ||
+                         reportText.match(/종가[:\s]*([0-9,]+)\s*원/i);
     if (currentMatch) {
-      result.recommendation.currentPrice = currentMatch[1] + '원';
+      result.recommendation.currentPrice = currentMatch[1].replace(/,/g, '') + '원';
     }
 
     // 상승여력 계산
     if (targetMatch && currentMatch) {
       const target = parseInt(targetMatch[1].replace(/,/g, ''));
       const current = parseInt(currentMatch[1].replace(/,/g, ''));
-      const upside = ((target - current) / current * 100).toFixed(1);
-      result.recommendation.upside = (upside > 0 ? '+' : '') + upside + '%';
+      if (!isNaN(target) && !isNaN(current) && current > 0) {
+        const upside = ((target - current) / current * 100).toFixed(1);
+        result.recommendation.upside = (upside > 0 ? '+' : '') + upside + '%';
+      }
     }
 
     // 리스크 추출
@@ -169,6 +199,28 @@ const InvestmentIntelligencePlatform = () => {
     return result;
   };
 
+  // AI 애널리스트 전용 요약 생성
+  const generateAISummary = (fullReport, parsedReport) => {
+    // "투자자 관점" 섹션이 있으면 우선 사용
+    const investorViewMatch = fullReport.match(/##?\s*투자자.*?관점.*?\n+([\s\S]*?)(?=\n##|$)/i);
+    if (investorViewMatch) {
+      return investorViewMatch[1].trim().replace(/[*#]/g, '');
+    }
+    
+    // "AI 분석" 섹션 찾기
+    const aiAnalysisMatch = fullReport.match(/##?\s*AI.*?분석.*?\n+([\s\S]*?)(?=\n##|$)/i);
+    if (aiAnalysisMatch) {
+      return aiAnalysisMatch[1].trim().replace(/[*#]/g, '');
+    }
+    
+    // 없으면 요약 + 핵심 포인트 조합으로 새로운 텍스트 생성
+    return `${parsedReport.summary.substring(0, 400)}
+
+투자 관점에서 보면, ${parsedReport.keyPoints.slice(0, 2).join(', ')} 등이 주요 관심 포인트입니다. 
+현재 투자 의견은 ${parsedReport.recommendation.opinion}이며, 
+${parsedReport.risks.length > 0 ? `주요 리스크로는 ${parsedReport.risks[0]}를 고려해야 합니다.` : '리스크 관리가 필요합니다.'}`;
+  };
+
   // AI 질문 처리 함수
   const handleCustomQuestion = async () => {
     if (!customQuestion.trim()) {
@@ -180,25 +232,42 @@ const InvestmentIntelligencePlatform = () => {
     setQuestionAnswer(null);
 
     try {
+      // 전체 리포트 본문을 context로 전달
       const response = await fetch('/api/generate-report', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          searchQuery: `다음 질문에 대해 핵심만 간결하게 답변해주세요. 질문: "${customQuestion}". 주제: ${topic}`,
+          searchQuery: `"${customQuestion}" - ${topic} 관련 질문에 정확히 답변`,
           uploadedFiles: [],
           additionalInfo: `
-기존 리포트 요약: ${report.summary}
+[중요] 아래 전체 리포트를 기반으로 질문에 정확하게 답변하세요.
 
-핵심 포인트:
+=== 전체 리포트 본문 ===
+${report.fullReport}
+
+=== 핵심 요약 ===
+${report.summary}
+
+=== 주요 포인트 ===
 ${report.keyPoints.join('\n')}
 
-투자 의견: ${report.recommendation.opinion}
+=== 투자 의견 ===
+의견: ${report.recommendation.opinion}
 목표주가: ${report.recommendation.targetPrice}
+현재가: ${report.recommendation.currentPrice}
+상승여력: ${report.recommendation.upside}
 
-위 정보를 바탕으로 질문에 대해 핵심 내용만 3-5문장으로 간결하게 답변하세요.
-불필요한 서론이나 부연 설명 없이 질문의 핵심에만 답하세요.
+=== 질문 ===
+"${customQuestion}"
+
+요구사항:
+1. 위 전체 리포트 내용을 정확히 이해하고 답변
+2. 질문의 핵심에만 집중하여 3-4문장으로 답변
+3. 리포트에 없는 내용은 추측하지 말 것
+4. 구체적인 근거와 함께 답변
+5. 서론 없이 바로 답변 시작
           `
         })
       });
@@ -214,13 +283,20 @@ ${report.keyPoints.join('\n')}
         let cleanAnswer = data.report
           .replace(/[*#_~`]/g, '')
           .replace(/\[.*?\]\(.*?\)/g, '')
+          .replace(/^##.*$/gm, '') // 헤더 제거
           .replace(/\n{3,}/g, '\n\n')
           .trim();
         
-        // 첫 300자만 사용 (핵심만)
-        if (cleanAnswer.length > 300) {
-          cleanAnswer = cleanAnswer.substring(0, 300) + '...';
-        }
+        // 질문 답변 부분만 추출
+        const answerLines = cleanAnswer.split('\n').filter(line => {
+          const trimmed = line.trim();
+          return trimmed.length > 20 && 
+                 !trimmed.startsWith('질문:') && 
+                 !trimmed.startsWith('답변:') &&
+                 !trimmed.startsWith('요약');
+        });
+        
+        cleanAnswer = answerLines.slice(0, 5).join(' ').substring(0, 500);
         
         setQuestionAnswer({
           question: customQuestion,
@@ -272,40 +348,39 @@ ${report.keyPoints.join('\n')}
       // API 응답을 리포트 형식으로 변환
       const parsedReport = parseClaudeReport(data.report);
       
+      // AI 애널리스트 전용 요약 생성
+      const aiSummary = generateAISummary(data.report, parsedReport);
+      
       setReport({
         title: `${topic} - 투자 분석 리포트`,
         timestamp: new Date(data.metadata.timestamp).toLocaleString('ko-KR'),
-        summary: parsedReport.summary || data.report.substring(0, 500).replace(/[*#]/g, ''),
+        summary: parsedReport.summary || data.report.substring(0, 800).replace(/[*#]/g, ''),
+        aiSummary: aiSummary, // AI 애널리스트 탭 전용
+        fullReport: data.report, // 전체 리포트 원문 저장
         metrics: {
           confidence: 85,
           dataPoints: data.metadata.newsCount,
           sources: data.metadata.sources.length,
           accuracy: 90
         },
-        keyPoints: parsedReport.keyPoints || [
-          'AI 반도체 수요 급증으로 HBM 시장 연평균 40% 성장 전망',
-          '메모리 반도체 가격 상승세 지속, 업계 마진 개선 예상',
-          '중국 경기 둔화 및 지정학적 리스크는 단기 변동성 요인',
-          '장기적 산업 성장성과 기술 경쟁력은 여전히 유효'
+        keyPoints: parsedReport.keyPoints.length > 0 ? parsedReport.keyPoints : [
+          '최신 뉴스 분석 결과 핵심 포인트를 추출하지 못했습니다.'
         ],
-        analysis: parsedReport.analysis || {
-          strengths: ['AI 반도체 시장 선도', '차세대 공정 기술력', '글로벌 시장 점유율 상승'],
-          weaknesses: ['중국 시장 의존도', '환율 변동성', '설비 투자 부담'],
-          opportunities: ['AI 데이터센터 수요 증가', '전기차 반도체 시장 확대', '정부 지원책'],
-          threats: ['미중 무역 분쟁', '글로벌 경기 침체', '경쟁사 추격']
+        analysis: parsedReport.analysis.strengths.length > 0 ? parsedReport.analysis : {
+          strengths: ['강점 분석 데이터 없음'],
+          weaknesses: ['약점 분석 데이터 없음'],
+          opportunities: ['기회 분석 데이터 없음'],
+          threats: ['위협 분석 데이터 없음']
         },
-        risks: parsedReport.risks || [
-          '지정학적 리스크로 인한 수출 규제 가능성',
-          '글로벌 경기 둔화 시 IT 수요 위축',
-          '메모리 반도체 가격 변동성 확대',
-          '환율 급등 시 영업이익 감소 위험'
+        risks: parsedReport.risks.length > 0 ? parsedReport.risks : [
+          '리스크 분석 데이터가 충분하지 않습니다.'
         ],
         recommendation: parsedReport.recommendation || {
-          opinion: 'BUY',
+          opinion: '-',
           targetPrice: '-',
           currentPrice: '-',
           upside: '-',
-          horizon: '12개월'
+          horizon: '-'
         },
         analysis: {
           strengths: [
@@ -848,10 +923,10 @@ ${report.keyPoints.join('\n')}
                         {/* Executive Summary Card */}
                         <div className="bg-white rounded-lg p-6 shadow-sm">
                           <h3 className="text-xl font-bold text-slate-900 mb-3">
-                            📊 핵심 요약
+                            📊 AI 투자 인사이트
                           </h3>
                           <p className="text-slate-700 leading-relaxed whitespace-pre-line">
-                            {report.summary}
+                            {report.aiSummary}
                           </p>
                         </div>
 
