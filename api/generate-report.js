@@ -1,6 +1,7 @@
 // ====================================
 // 백엔드 서버 (Vercel Serverless Function)
 // 파일명: api/generate-report.js
+// 네이버 뉴스 API 직접 호출 (개선 버전)
 // ====================================
 
 export default async function handler(req, res) {
@@ -20,23 +21,38 @@ export default async function handler(req, res) {
   try {
     const { searchQuery, uploadedFiles, additionalInfo } = req.body;
 
-    // 1. Google News 검색 (실제 구현)
-    const newsData = await fetchGoogleNews(searchQuery);
+    console.log('=== 검색 시작 ===');
+    console.log('검색어:', searchQuery);
 
-    // 2. 프롬프트 생성
-    const prompt = buildPrompt(searchQuery, newsData, uploadedFiles, additionalInfo);
+    // 1. 네이버 뉴스 검색
+    const newsData = await searchNaverNews(searchQuery);
 
-    // 3. Claude API 호출 (당신의 API 키 사용!)
+    console.log('수집된 뉴스:', newsData.length, '건');
+
+    if (newsData.length === 0) {
+      console.log('⚠️ 뉴스 0건 - 검색어를 확인하세요');
+    }
+
+    // 2. 감성 분석
+    const sentiment = analyzeSentiment(newsData);
+    console.log('감성 분석 결과:', sentiment);
+
+    // 3. 프롬프트 생성
+    const prompt = buildPrompt(searchQuery, newsData, uploadedFiles, additionalInfo, sentiment);
+
+    console.log('=== Claude API 호출 ===');
+
+    // 4. Claude AI 분석
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY, // Vercel 환경 변수에 저장
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 8000,
+        max_tokens: 4096,
         messages: [{
           role: 'user',
           content: prompt
@@ -45,200 +61,296 @@ export default async function handler(req, res) {
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      console.error('Claude API Error:', error);
-      return res.status(response.status).json({ 
-        error: 'AI 서비스 오류', 
-        details: error 
-      });
+      const errorData = await response.text();
+      console.error('Claude API 오류:', errorData);
+      throw new Error(`Claude API 오류: ${response.status}`);
     }
 
     const data = await response.json();
-    const reportContent = data.content[0].text;
+    const report = data.content[0].text;
 
-    // 4. 투자의견 추출
-    let rating = 'HOLD';
-    if (reportContent.includes('BUY') || reportContent.includes('매수')) {
-      rating = 'BUY';
-    } else if (reportContent.includes('SELL') || reportContent.includes('매도')) {
-      rating = 'SELL';
-    }
+    console.log('리포트 생성 완료');
 
+    // 5. 투자 의견 추출
+    const rating = extractRating(report);
+    console.log('투자 의견:', rating);
+
+    // 6. 응답
     return res.status(200).json({
-      success: true,
-      report: reportContent,
+      report: report,
       rating: rating,
       newsCount: newsData.length,
-      sentiment: newsData.sentiment,
-      generatedAt: new Date().toISOString()
+      sentiment: sentiment,
+      success: true
     });
 
   } catch (error) {
-    console.error('Server Error:', error);
+    console.error('=== 오류 발생 ===');
+    console.error(error);
     return res.status(500).json({ 
-      error: '서버 오류', 
-      message: error.message 
+      error: error.message,
+      details: '서버 로그를 확인하세요'
     });
   }
 }
 
-// Google News 검색 함수
-async function fetchGoogleNews(query) {
+// ====================================
+// 네이버 뉴스 검색 (직접 호출)
+// ====================================
+async function searchNaverNews(query) {
+  const clientId = process.env.NAVER_CLIENT_ID;
+  const clientSecret = process.env.NAVER_CLIENT_SECRET;
+
+  // API 키 확인
+  if (!clientId || !clientSecret) {
+    console.error('❌ 네이버 API 키가 없습니다!');
+    console.log('환경 변수 확인:');
+    console.log('NAVER_CLIENT_ID:', clientId ? '있음' : '없음');
+    console.log('NAVER_CLIENT_SECRET:', clientSecret ? '있음' : '없음');
+    return [];
+  }
+
+  console.log('✅ 네이버 API 키 확인됨');
+
+  let allNews = [];
+
   try {
-    const encodedQuery = encodeURIComponent(query);
-    const rssUrl = `https://news.google.com/rss/search?q=${encodedQuery}&hl=ko&gl=KR&ceid=KR:ko`;
-    
-    // CORS 우회 프록시
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(rssUrl)}`;
-    
-    const response = await fetch(proxyUrl);
-    const data = await response.json();
-    
-    // XML 파싱 (간단한 정규식 사용)
-    const xmlContent = data.contents;
-    const titleRegex = /<title><!\[CDATA\[(.*?)\]\]><\/title>/g;
-    const linkRegex = /<link>(.*?)<\/link>/g;
-    const pubDateRegex = /<pubDate>(.*?)<\/pubDate>/g;
-    
-    const titles = [...xmlContent.matchAll(titleRegex)].map(m => m[1]);
-    const links = [...xmlContent.matchAll(linkRegex)].map(m => m[1]);
-    const dates = [...xmlContent.matchAll(pubDateRegex)].map(m => m[1]);
-    
-    const news = [];
-    for (let i = 1; i < Math.min(titles.length, 11); i++) { // 첫 번째는 피드 제목이므로 스킵
-      news.push({
-        title: titles[i],
-        link: links[i],
-        pubDate: dates[i - 1],
-        source: 'Google News'
+    // 최대 100개까지 수집 (10개씩 10페이지)
+    const maxDisplay = 10;
+    const maxPages = 10;
+
+    for (let page = 1; page <= maxPages; page++) {
+      const start = (page - 1) * maxDisplay + 1;
+
+      console.log(`페이지 ${page} 검색 중... (${start}~${start + maxDisplay - 1})`);
+
+      const url = `https://openapi.naver.com/v1/search/news.json?query=${encodeURIComponent(query)}&display=${maxDisplay}&start=${start}&sort=date`;
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'X-Naver-Client-Id': clientId,
+          'X-Naver-Client-Secret': clientSecret
+        }
       });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`네이버 API 오류 (페이지 ${page}):`, response.status, errorText);
+        
+        // 첫 페이지 실패하면 중단
+        if (page === 1) {
+          console.error('첫 페이지 실패 - 검색 중단');
+          break;
+        }
+        
+        // 이후 페이지는 건너뛰기
+        console.log('이후 페이지 건너뜀');
+        break;
+      }
+
+      const data = await response.json();
+      
+      console.log(`페이지 ${page} 결과: ${data.items?.length || 0}건`);
+
+      if (!data.items || data.items.length === 0) {
+        console.log('더 이상 뉴스 없음');
+        break;
+      }
+
+      // HTML 태그 제거 및 데이터 정리
+      const cleanedNews = data.items.map(item => ({
+        title: removeHtmlTags(item.title),
+        description: removeHtmlTags(item.description),
+        link: item.link,
+        pubDate: item.pubDate,
+        originallink: item.originallink
+      }));
+
+      allNews.push(...cleanedNews);
+
+      // 최근 3일 뉴스만 (선택 사항)
+      const threeDaysAgo = new Date();
+      threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+
+      allNews = allNews.filter(news => {
+        const newsDate = new Date(news.pubDate);
+        return newsDate >= threeDaysAgo;
+      });
+
+      // API 속도 제한 고려 (100ms 대기)
+      if (page < maxPages) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
     }
-    
-    // 감성 분석
-    const positive = ['상승', '호조', '증가', '개선', '성장', '급등', '강세', '확대'];
-    const negative = ['하락', '부진', '감소', '악화', '급락', '약세', '축소', '우려'];
-    
-    let sentiment = 0;
-    news.forEach(n => {
-      positive.forEach(word => { if (n.title.includes(word)) sentiment++; });
-      negative.forEach(word => { if (n.title.includes(word)) sentiment--; });
-    });
-    
-    const sentimentText = sentiment > 2 ? "매우 긍정적" : 
-                         sentiment > 0 ? "긍정적" :
-                         sentiment < -2 ? "매우 부정적" :
-                         sentiment < 0 ? "부정적" : "중립적";
-    
-    news.sentiment = sentimentText;
-    return news;
-    
+
+    console.log(`총 ${allNews.length}건 수집 완료`);
+    return allNews;
+
   } catch (error) {
-    console.error('News fetch error:', error);
+    console.error('네이버 API 검색 오류:', error);
     return [];
   }
 }
 
-// 프롬프트 생성 함수
-function buildPrompt(query, newsData, uploadedFiles, additionalInfo) {
-  const filesSection = uploadedFiles && uploadedFiles.length > 0 ? `
-## 📄 업로드된 증권사/리서치 리포트 (${uploadedFiles.length}개)
-${uploadedFiles.map((f, i) => `${i + 1}. **${f.name}** (${f.size})`).join('\n')}
+// ====================================
+// HTML 태그 제거
+// ====================================
+function removeHtmlTags(text) {
+  if (!text) return '';
+  return text
+    .replace(/<[^>]*>/g, '')  // HTML 태그 제거
+    .replace(/&quot;/g, '"')   // &quot; → "
+    .replace(/&amp;/g, '&')    // &amp; → &
+    .replace(/&lt;/g, '<')     // &lt; → <
+    .replace(/&gt;/g, '>')     // &gt; → >
+    .replace(/&#39;/g, "'")    // &#39; → '
+    .trim();
+}
 
-**중요**: 위 리포트들의 전문가 인사이트를 분석에 반영하세요.
-` : '';
+// ====================================
+// 감성 분석
+// ====================================
+function analyzeSentiment(newsData) {
+  if (!newsData || newsData.length === 0) {
+    return '중립';
+  }
 
-  const additionalSection = additionalInfo ? `
-## 💭 사용자 추가 정보
-${additionalInfo}
-` : '';
+  const positiveWords = ['상승', '증가', '호재', '성장', '개선', '확대', '긍정', '상향'];
+  const negativeWords = ['하락', '감소', '악재', '둔화', '우려', '하향', '부정', '리스크'];
 
-  return `당신은 20년 경력의 투자 전문가이자 금융 애널리스트입니다.
+  let positiveCount = 0;
+  let negativeCount = 0;
 
-# 분석 요청
-**"${query}"**
+  newsData.forEach(news => {
+    const text = (news.title + ' ' + news.description).toLowerCase();
+    
+    positiveWords.forEach(word => {
+      if (text.includes(word)) positiveCount++;
+    });
+    
+    negativeWords.forEach(word => {
+      if (text.includes(word)) negativeCount++;
+    });
+  });
 
-위 주제에 대한 **완전히 새로운 투자 리포트**를 작성하세요.
+  console.log('긍정 키워드:', positiveCount, '부정 키워드:', negativeCount);
 
----
+  if (positiveCount > negativeCount * 1.3) return '긍정적';
+  if (negativeCount > positiveCount * 1.3) return '부정적';
+  return '중립';
+}
 
-# 실시간 수집 데이터 (정확한 정보)
+// ====================================
+// 프롬프트 생성
+// ====================================
+function buildPrompt(searchQuery, newsData, uploadedFiles, additionalInfo, sentiment) {
+  let prompt = '';
 
-## 📰 Google News 실시간 검색 결과 (${newsData.length}건)
-**수집 시각**: ${new Date().toLocaleString('ko-KR')}
-**시장 감성**: ${newsData.sentiment}
+  // 뉴스 데이터가 있을 때
+  if (newsData && newsData.length > 0) {
+    const newsText = newsData.map((news, i) => 
+      `[뉴스 ${i + 1}]\n제목: ${news.title}\n내용: ${news.description}\n발행일: ${news.pubDate}\n\n`
+    ).join('');
 
-${newsData.map((n, i) => `
-${i + 1}. **${n.title}**
-   - 출처: ${n.source}
-   - 시간: ${n.pubDate}
-`).join('\n')}
+    prompt = `당신은 전문 금융 애널리스트입니다.
 
-${filesSection}
+다음 최신 뉴스 ${newsData.length}건을 분석하여 "${searchQuery}"에 대한 전문적인 투자 리포트를 작성하세요.
 
-${additionalSection}
+=== 최신 뉴스 ===
+${newsText}
 
----
+=== 리포트 구조 ===
 
-# 리포트 작성 지침
+# ${searchQuery} 투자 분석 리포트
 
-## 1. 핵심 요약 (3-5문장)
-- 가장 중요한 포인트를 명확하게
-- 투자자가 즉시 이해할 수 있도록
+## 1. 요약
+핵심 투자 포인트 3가지를 간결하게
 
-## 2. 시장 상황 분석
-- 실시간 뉴스 기반 현재 상황
-- 시장 감성: ${newsData.sentiment}
-- 주요 이슈 및 트렌드
+## 2. 시장 현황 분석
+위 뉴스를 바탕으로 현재 시장 상황 분석
 
-## 3. 핵심 투자 포인트 (5-7가지)
-각 포인트를 구체적으로:
-• **포인트 제목**
-  - 현황: 구체적 설명
-  - 근거: 뉴스 및 데이터
-  - 시사점: 투자 전략
+## 3. 주요 이슈
+뉴스에서 나타난 주요 이슈 3가지
 
-## 4. 리스크 요인
-- 단기 리스크
-- 중장기 리스크
-- 대응 전략
+## 4. 투자 전망
+- 단기 전망 (1-3개월)
+- 중기 전망 (6-12개월)
 
-## 5. 투자 전략 및 권고
-- 구체적인 투자 방향
-- 포트폴리오 구성 제안
-- 타이밍 전략
+## 5. 리스크 요인
+주의해야 할 리스크 요인
 
-## 6. 결론 및 향후 전망
-- 핵심 메시지 재강조
-- 주목할 지표/이벤트
-- 최종 투자 의견
-
----
-
-# 작성 원칙
-
-1. **정확성**: 실제 수집된 뉴스 데이터 정확히 반영
-2. **최신성**: 실시간 정보 기반 분석
-3. **실용성**: 실제 투자에 활용 가능
-4. **전문성**: 전문 애널리스트 수준
-5. **명확성**: 핵심이 분명하고 읽기 쉽게
-
----
-
-**작성일**: ${new Date().toLocaleDateString('ko-KR', {
-  year: 'numeric',
-  month: 'long', 
-  day: 'numeric',
-  weekday: 'long'
-})}
-
-**데이터 출처**: 
-- Google News 실시간 검색 (${newsData.length}건)
-${uploadedFiles && uploadedFiles.length > 0 ? `- 업로드 리포트 (${uploadedFiles.length}개)` : ''}
-${additionalInfo ? '- 사용자 추가 정보' : ''}
-
-**시장 감성**: ${newsData.sentiment}
+## 6. 투자 의견
+**최종 의견: BUY / HOLD / SELL 중 하나를 명시**
 
 ---
 
-위 실시간 정보를 바탕으로 완전히 새로운, 실전 투자에 활용 가능한 리포트를 작성하세요.`;
+**작성 원칙:**
+1. 위에 제공된 ${newsData.length}건의 실제 뉴스를 반드시 분석에 활용
+2. 전문 애널리스트 수준의 분석
+3. 실제 투자에 즉시 활용 가능
+4. 핵심이 분명하고 읽기 쉽게
+5. 뉴스 내용 기반의 근거 있는 분석
+
+**시장 감성**: ${sentiment}
+
+위 뉴스를 바탕으로 전문적이고 실용적인 리포트를 작성하세요.`;
+
+  } else {
+    // 뉴스가 없을 때
+    prompt = `당신은 전문 금융 애널리스트입니다.
+
+"${searchQuery}"에 대한 투자 분석 리포트를 작성하세요.
+
+(참고: 최신 뉴스 데이터가 없어 일반적인 분석을 제공합니다)
+
+=== 리포트 구조 ===
+
+# ${searchQuery} 투자 분석 리포트
+
+## 1. 요약
+핵심 투자 포인트 3가지
+
+## 2. 시장 현황 분석
+현재 시장 상황 분석
+
+## 3. 주요 이슈
+주목할 만한 이슈
+
+## 4. 투자 전망
+- 단기 전망
+- 중기 전망
+
+## 5. 리스크 요인
+주의해야 할 리스크
+
+## 6. 투자 의견
+**최종 의견: BUY / HOLD / SELL 중 하나를 명시**
+
+---
+
+전문적이고 실용적인 리포트를 작성하세요.`;
+  }
+
+  // 추가 정보가 있으면
+  if (additionalInfo) {
+    prompt += `\n\n=== 추가 고려사항 ===\n${additionalInfo}`;
+  }
+
+  return prompt;
+}
+
+// ====================================
+// 투자 의견 추출
+// ====================================
+function extractRating(report) {
+  const reportLower = report.toLowerCase();
+  
+  if (reportLower.includes('buy') || reportLower.includes('매수')) {
+    return 'BUY';
+  }
+  if (reportLower.includes('sell') || reportLower.includes('매도')) {
+    return 'SELL';
+  }
+  return 'HOLD';
 }
