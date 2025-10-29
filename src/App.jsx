@@ -29,18 +29,20 @@ const InvestmentIntelligencePlatform = () => {
     let textToRead = '';
     
     if (mode === 'summary') {
-      // 요약만 읽기
+      // 요약만 읽기 - 마크다운 기호 제거
+      const cleanSummary = report.summary
+        .replace(/[*#_~`]/g, '')
+        .replace(/\[.*?\]\(.*?\)/g, '')
+        .replace(/\n+/g, ' ');
+      
       textToRead = `
-        ${report.title}. 
-        ${report.summary}.
-        주요 리스크는 ${report.risks[0]}입니다.
-        투자 의견은 ${report.recommendation.opinion}이며, 
-        목표가는 ${report.recommendation.targetPrice}입니다.
+        ${report.title.replace(/[*#_]/g, '')}. 
+        ${cleanSummary}.
       `;
     } else {
       // 핵심 포인트만 읽기
       textToRead = `
-        ${report.title}. 
+        ${report.title.replace(/[*#_]/g, '')}. 
         핵심 포인트 ${report.keyPoints.length}가지입니다. 
         ${report.keyPoints.map((point, i) => `${i + 1}번째, ${point}`).join('. ')}
       `;
@@ -328,8 +330,25 @@ const InvestmentIntelligencePlatform = () => {
                   <p className="text-sm text-slate-500">{report.timestamp}</p>
                 </div>
                 
-                {/* Voice Reading Controls */}
                 <div className="flex flex-col space-y-2">
+                  {/* Download Button */}
+                  <button
+                    onClick={() => {
+                      const element = document.createElement('a');
+                      const file = new Blob([report.fullReport || JSON.stringify(report, null, 2)], {type: 'text/plain'});
+                      element.href = URL.createObjectURL(file);
+                      element.download = `${report.title.replace(/[^a-z0-9]/gi, '_')}.txt`;
+                      document.body.appendChild(element);
+                      element.click();
+                      document.body.removeChild(element);
+                    }}
+                    className="flex items-center space-x-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200 transition-colors"
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>리포트 다운로드</span>
+                  </button>
+                  
+                  {/* Voice Reading Controls */}
                   <button
                     onClick={() => handleTextToSpeech('summary')}
                     className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -628,69 +647,148 @@ const InvestmentIntelligencePlatform = () => {
                   </div>
                 ) : (
                   /* AI Analyst Tab - Gemini Canvas Style */
-                  <div className="space-y-5">
-                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-5 border border-blue-200">
-                      <div className="flex items-start space-x-3">
-                        <MessageSquare className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
-                        <div>
-                          <h3 className="font-bold text-lg text-slate-900 mb-2">
-                            AI 애널리스트에게 물어보세요
+                  <div className="space-y-6">
+                    {/* Main Report Section - Gemini Canvas Style */}
+                    <div className="bg-gradient-to-br from-slate-50 to-blue-50 rounded-xl p-8 border border-slate-200">
+                      <h2 className="text-3xl font-bold text-slate-900 mb-4 text-center">
+                        {topic} 트렌드 분석
+                      </h2>
+                      <p className="text-center text-slate-600 mb-8">
+                        {new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })} 투자 인사이트
+                      </p>
+
+                      {/* Key Insight Cards */}
+                      <div className="space-y-6">
+                        {/* Executive Summary Card */}
+                        <div className="bg-white rounded-lg p-6 shadow-sm">
+                          <h3 className="text-xl font-bold text-slate-900 mb-3">
+                            📊 핵심 요약
                           </h3>
-                          <p className="text-sm text-slate-600">
-                            리포트 내용을 바탕으로 궁금하신 점을 선택하거나 직접 질문해보세요
+                          <p className="text-slate-700 leading-relaxed">
+                            {report.summary}
                           </p>
+                        </div>
+
+                        {/* Key Points with Visual Cards */}
+                        <div className="grid md:grid-cols-2 gap-4">
+                          {report.keyPoints.map((point, index) => (
+                            <div key={index} className="bg-white rounded-lg p-5 shadow-sm border-l-4 border-blue-500">
+                              <div className="flex items-start space-x-3">
+                                <span className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold">
+                                  {index + 1}
+                                </span>
+                                <p className="text-slate-700 leading-relaxed pt-1">{point}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Investment Recommendation Highlight */}
+                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-6 border border-green-200">
+                          <h3 className="text-xl font-bold text-slate-900 mb-4 text-center">
+                            투자 의견
+                          </h3>
+                          <div className="text-center">
+                            <span className={`inline-block px-6 py-3 rounded-full text-2xl font-bold ${
+                              report.recommendation.opinion === 'BUY' 
+                                ? 'bg-green-600 text-white'
+                                : report.recommendation.opinion === 'SELL'
+                                ? 'bg-red-600 text-white'
+                                : 'bg-amber-600 text-white'
+                            }`}>
+                              {report.recommendation.opinion}
+                            </span>
+                            <div className="mt-4 grid grid-cols-3 gap-4 text-center">
+                              <div>
+                                <p className="text-xs text-slate-600 mb-1">목표주가</p>
+                                <p className="text-xl font-bold text-slate-900">{report.recommendation.targetPrice}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-slate-600 mb-1">현재가</p>
+                                <p className="text-xl font-bold text-slate-700">{report.recommendation.currentPrice}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-slate-600 mb-1">상승여력</p>
+                                <p className="text-xl font-bold text-green-600">{report.recommendation.upside}</p>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
 
-                    {report.analystQuestions.map((item, index) => (
-                      <div key={index} className="border border-slate-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
-                        <div className="bg-slate-50 p-4 border-b border-slate-200">
-                          <div className="flex items-start space-x-3">
-                            <span className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold">
-                              Q{index + 1}
-                            </span>
-                            <h4 className="font-semibold text-slate-900 text-base leading-relaxed pt-1">
-                              {item.question}
-                            </h4>
-                          </div>
-                        </div>
-                        <div className="bg-white p-5">
-                          <div className="flex items-start space-x-3 mb-3">
-                            <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-600 text-white rounded-full flex items-center justify-center text-sm font-bold">
-                              A
-                            </div>
-                            <p className="text-slate-700 leading-relaxed pt-1">{item.answer}</p>
-                          </div>
-                          <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
-                            <span className={`text-xs font-medium px-3 py-1 rounded-full ${
-                              item.confidence === '높음' 
-                                ? 'bg-green-100 text-green-700' 
-                                : item.confidence === '중간'
-                                ? 'bg-amber-100 text-amber-700'
-                                : 'bg-slate-100 text-slate-700'
-                            }`}>
-                              신뢰도: {item.confidence}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                    {/* Separator */}
+                    <div className="border-t-2 border-slate-200 my-8"></div>
 
-                    {/* Custom Question Input */}
-                    <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-5 border border-purple-200">
-                      <h4 className="font-semibold text-slate-900 mb-3">직접 질문하기</h4>
+                    {/* FAQ Section */}
+                    <div className="bg-white rounded-xl p-6 border border-slate-200">
+                      <div className="flex items-center space-x-3 mb-6">
+                        <MessageSquare className="w-6 h-6 text-blue-600" />
+                        <h3 className="text-xl font-bold text-slate-900">
+                          자주 묻는 질문
+                        </h3>
+                      </div>
+                      <p className="text-sm text-slate-600 mb-6">
+                        리포트 내용에 대해 투자자들이 자주 묻는 질문과 답변입니다
+                      </p>
+
+                      <div className="space-y-4">
+                        {report.analystQuestions.map((item, index) => (
+                          <div key={index} className="border border-slate-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
+                            <div className="bg-slate-50 p-4 border-b border-slate-200">
+                              <div className="flex items-start space-x-3">
+                                <span className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold">
+                                  Q{index + 1}
+                                </span>
+                                <h4 className="font-semibold text-slate-900 text-base leading-relaxed pt-1">
+                                  {item.question}
+                                </h4>
+                              </div>
+                            </div>
+                            <div className="bg-white p-5">
+                              <div className="flex items-start space-x-3 mb-3">
+                                <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-600 text-white rounded-full flex items-center justify-center text-sm font-bold">
+                                  A
+                                </div>
+                                <p className="text-slate-700 leading-relaxed pt-1">{item.answer}</p>
+                              </div>
+                              <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
+                                <span className={`text-xs font-medium px-3 py-1 rounded-full ${
+                                  item.confidence === '높음' 
+                                    ? 'bg-green-100 text-green-700' 
+                                    : item.confidence === '중간'
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : 'bg-slate-100 text-slate-700'
+                                }`}>
+                                  신뢰도: {item.confidence}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Direct Question Section */}
+                    <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-6 border border-purple-200">
+                      <div className="flex items-center space-x-3 mb-4">
+                        <span className="text-2xl">✨</span>
+                        <h4 className="text-lg font-bold text-slate-900">AI 애널리스트에게 직접 질문하기</h4>
+                      </div>
+                      <p className="text-sm text-slate-600 mb-4">
+                        리포트 내용에 대해 궁금한 점이 있으신가요? AI 애널리스트에게 질문하고 맥락 기반 답변을 받아보세요.
+                      </p>
                       <div className="flex space-x-2">
                         <input
                           type="text"
-                          placeholder="AI 애널리스트에게 질문을 입력하세요..."
-                          className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                          placeholder="예: 이 종목의 리스크는 어느 정도인가요?"
+                          className="flex-1 px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
                         />
-                        <button className="px-6 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors text-sm">
-                          질문
+                        <button className="px-6 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors text-sm whitespace-nowrap">
+                          질문하기
                         </button>
                       </div>
-                      <p className="text-xs text-slate-500 mt-2">
+                      <p className="text-xs text-slate-500 mt-3">
                         💡 현재 리포트 내용을 기반으로 답변합니다
                       </p>
                     </div>
