@@ -1,30 +1,14 @@
 import React, { useState } from 'react';
-import { Search, Upload, Download, FileText, Sparkles, Brain, CheckCircle, RefreshCw, X, TrendingUp, AlertCircle, Copy } from 'lucide-react';
+import { Search, FileText, Download, Volume2, TrendingUp, BarChart3, Target, AlertTriangle, Copy, Loader } from 'lucide-react';
 
-const FullAutoReportGenerator = () => {
-  const [step, setStep] = useState(1);
+const InvestmentIntelligencePlatform = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [additionalInfo, setAdditionalInfo] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedReport, setGeneratedReport] = useState(null);
-  const [progress, setProgress] = useState([]);
   const [error, setError] = useState(null);
-
-  const exampleQueries = [
-    "오늘 금통위 결과에 대한 앞으로의 투자예측",
-    "삼성전자 투자 전략 분석",
-    "반도체 업황 사이클과 투자 기회",
-    "미국 FOMC 결과가 한국 증시에 미치는 영향"
-  ];
-
-  const addProgress = (message, type = 'info') => {
-    setProgress(prev => [...prev, { 
-      message, 
-      type,
-      time: new Date().toLocaleTimeString('ko-KR') 
-    }]);
-  };
+  const [activeTab, setActiveTab] = useState('report');
 
   const handleFileUpload = (e) => {
     const files = Array.from(e.target.files);
@@ -33,31 +17,26 @@ const FullAutoReportGenerator = () => {
       size: (file.size / 1024 / 1024).toFixed(2) + ' MB'
     }));
     setUploadedFiles([...uploadedFiles, ...newFiles]);
-    addProgress(`📄 파일 업로드: ${files.length}개`, 'success');
   };
 
   const removeFile = (index) => {
-    const removed = uploadedFiles[index];
     setUploadedFiles(uploadedFiles.filter((_, i) => i !== index));
-    addProgress(`🗑️ 파일 제거: ${removed.name}`, 'info');
   };
 
   const generateReport = async () => {
+    if (!searchQuery.trim()) {
+      setError('분석 주제를 입력해주세요');
+      return;
+    }
+
     setIsGenerating(true);
-    setProgress([]);
     setError(null);
+    setGeneratedReport(null);
     
     try {
-      addProgress('🚀 AI 리포트 생성 시작!', 'info');
-      addProgress(`🔎 분석 주제: "${searchQuery}"`, 'info');
-      addProgress('📰 실시간 뉴스 수집 중...', 'info');
-      
-      // API 호출
       const response = await fetch('/api/generate-report', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           searchQuery,
           uploadedFiles,
@@ -70,13 +49,7 @@ const FullAutoReportGenerator = () => {
         throw new Error(errorData.error || `HTTP ${response.status}`);
       }
 
-      addProgress('🤖 Claude AI가 리포트 작성 중...', 'info');
-      
       const data = await response.json();
-      
-      addProgress(`✅ 뉴스 ${data.newsCount}건 수집 완료!`, 'success');
-      addProgress(`📊 시장 감성: ${data.sentiment}`, 'success');
-      addProgress('✅ 리포트 생성 완료!', 'success');
       
       setGeneratedReport({
         content: data.report,
@@ -86,270 +59,375 @@ const FullAutoReportGenerator = () => {
         generatedAt: new Date().toLocaleString('ko-KR')
       });
 
-      setStep(2);
-
     } catch (error) {
       console.error('오류:', error);
       setError(error.message);
-      addProgress(`❌ 오류 발생: ${error.message}`, 'error');
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const downloadReport = () => {
-    const text = generatedReport.content;
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const downloadReport = (format) => {
+    if (!generatedReport) return;
+
+    const filename = `투자리포트_${searchQuery.replace(/[^a-zA-Z0-9가-힣]/g, '_')}_${Date.now()}.${format}`;
+    const blob = new Blob([generatedReport.content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `투자리포트_${searchQuery.slice(0, 20)}_${Date.now()}.txt`;
-    link.click();
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
     URL.revokeObjectURL(url);
   };
 
-  const resetForm = () => {
-    setStep(1);
-    setSearchQuery('');
-    setUploadedFiles([]);
-    setAdditionalInfo('');
-    setGeneratedReport(null);
-    setProgress([]);
-    setError(null);
+  const speakReport = () => {
+    if (!generatedReport) return;
+    
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(generatedReport.content);
+      utterance.lang = 'ko-KR';
+      utterance.rate = 1.0;
+      window.speechSynthesis.speak(utterance);
+    } else {
+      alert('음성 읽기 기능을 지원하지 않는 브라우저입니다.');
+    }
+  };
+
+  const copyToClipboard = () => {
+    if (!generatedReport) return;
+    navigator.clipboard.writeText(generatedReport.content);
+    alert('리포트가 클립보드에 복사되었습니다');
+  };
+
+  const getRatingColor = (rating) => {
+    if (rating === 'BUY') return 'text-emerald-600 bg-emerald-50 border-emerald-200';
+    if (rating === 'SELL') return 'text-red-600 bg-red-50 border-red-200';
+    return 'text-amber-600 bg-amber-50 border-amber-200';
+  };
+
+  const getSentimentColor = (sentiment) => {
+    if (sentiment === '긍정적') return 'text-emerald-600';
+    if (sentiment === '부정적') return 'text-red-600';
+    return 'text-slate-600';
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
+    <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="bg-slate-800/50 backdrop-blur-sm border-b border-blue-500/30">
-        <div className="max-w-6xl mx-auto px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-3 rounded-xl">
-                <Brain className="w-8 h-8 text-white" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-white">AI 투자 리포트 생성기</h1>
-                <p className="text-blue-300 mt-1">⚡ 완전 자동화 - 버튼 한 번에 완성!</p>
-              </div>
+      <header className="bg-white border-b border-slate-200">
+        <div className="max-w-5xl mx-auto px-6 py-6">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+              <TrendingUp className="w-6 h-6 text-white" />
             </div>
-            {step === 2 && (
-              <button onClick={resetForm} className="bg-blue-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-blue-700 transition">
-                새 리포트 작성
-              </button>
-            )}
+            <div>
+              <h1 className="text-xl font-bold text-slate-900">Investment Intelligence</h1>
+              <p className="text-sm text-slate-500">스마트 투자 리서치</p>
+            </div>
           </div>
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto px-6 py-8">
-        {/* Step 1: Input */}
-        {step === 1 && (
-          <div className="space-y-6">
-            <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-8 border border-slate-700/50">
-              <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-                <Search className="w-7 h-7 text-blue-400" />
-                분석 주제 입력
-              </h2>
-              
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-300 mb-2">
-                    검색어 / 분석 주제 *
-                  </label>
+      <div className="max-w-5xl mx-auto px-6 py-8">
+        {/* Input Section */}
+        {!generatedReport && (
+          <div className="bg-white rounded-lg shadow-sm border border-slate-200">
+            <div className="p-8">
+              {/* Title */}
+              <h2 className="text-2xl font-bold text-slate-900 mb-6">투자 분석 리포트 생성</h2>
+
+              {/* Usage Guide */}
+              <div className="mb-8 p-4 bg-blue-50 border-l-4 border-blue-600 rounded">
+                <p className="text-sm text-slate-700">
+                  <span className="font-semibold">사용방법:</span> 분석 주제 입력 → 증권사 리포트 업로드(선택) → 리포트 생성
+                </p>
+              </div>
+
+              {/* Search Query */}
+              <div className="mb-6">
+                <label className="block text-sm font-semibold text-slate-900 mb-2">
+                  분석 주제
+                </label>
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="예: 오늘 금통위 결과에 대한 투자예측"
-                    className="w-full bg-slate-900/50 border border-slate-600 rounded-xl px-4 py-4 text-white text-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="예: 삼성전자 투자 전망, 2차전지 섹터 분석, 미국 금리 인하 영향"
+                    className="w-full pl-12 pr-4 py-3 border border-slate-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+                    onKeyPress={(e) => e.key === 'Enter' && generateReport()}
                   />
                 </div>
+              </div>
 
-                <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
-                  <p className="text-sm font-semibold text-white mb-2">💡 예시 검색어:</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {exampleQueries.map((query, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setSearchQuery(query)}
-                        className="text-left text-sm text-blue-300 hover:text-blue-200 hover:bg-blue-500/10 px-3 py-2 rounded-lg transition"
-                      >
-                        • {query}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* File Upload */}
-                <div>
-                  <label className="block text-sm font-semibold text-slate-300 mb-3">
-                    📄 증권사 리포트 업로드 (선택)
-                  </label>
+              {/* File Upload */}
+              <div className="mb-6">
+                <label className="block text-sm font-semibold text-slate-900 mb-2">
+                  증권사 리포트 업로드 (선택)
+                </label>
+                <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 hover:border-blue-400 transition-colors">
                   <input
                     type="file"
                     multiple
-                    accept=".pdf,.xlsx,.docx,.txt"
+                    accept=".pdf,.doc,.docx,.txt"
                     onChange={handleFileUpload}
-                    className="w-full bg-slate-900/50 border-2 border-dashed border-slate-600 rounded-xl px-4 py-6 text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer hover:border-blue-500 transition"
+                    className="hidden"
+                    id="file-upload"
                   />
-                  
-                  {uploadedFiles.length > 0 && (
-                    <div className="mt-4 space-y-2">
-                      {uploadedFiles.map((file, index) => (
-                        <div key={index} className="flex items-center justify-between bg-slate-900/50 border border-slate-600 rounded-lg px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            <FileText className="w-5 h-5 text-blue-400" />
-                            <div>
-                              <p className="text-white font-medium">{file.name}</p>
-                              <p className="text-xs text-slate-400">{file.size}</p>
-                            </div>
-                          </div>
-                          <button onClick={() => removeFile(index)} className="text-red-400 hover:text-red-300">
-                            <X className="w-5 h-5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Additional Info */}
-                <div>
-                  <label className="block text-sm font-semibold text-slate-300 mb-3">
-                    💭 추가 정보 (선택)
-                  </label>
-                  <textarea
-                    value={additionalInfo}
-                    onChange={(e) => setAdditionalInfo(e.target.value)}
-                    placeholder="개인 분석이나 참고할 정보를 입력하세요..."
-                    rows={4}
-                    className="w-full bg-slate-900/50 border border-slate-600 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-6">
-                  <div className="flex gap-3">
-                    <Sparkles className="w-6 h-6 text-green-400 flex-shrink-0" />
-                    <div>
-                      <p className="font-semibold text-white mb-2">🤖 AI가 자동으로:</p>
-                      <ul className="text-sm text-slate-300 space-y-1 list-disc list-inside">
-                        <li>Google News 실시간 검색</li>
-                        <li>시장 감성 분석</li>
-                        <li>Claude AI로 리포트 생성</li>
-                        <li>완전히 새로운 투자 전략 제시</li>
-                      </ul>
-                      <p className="mt-3 text-yellow-300 text-sm">
-                        ⚡ 버튼 한 번에 모든 것이 자동으로!
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <button
-              onClick={generateReport}
-              disabled={!searchQuery.trim() || isGenerating}
-              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold py-6 rounded-2xl hover:shadow-2xl transition disabled:opacity-50 text-xl"
-            >
-              {isGenerating ? (
-                <span className="flex items-center justify-center gap-2">
-                  <RefreshCw className="w-6 h-6 animate-spin" />
-                  AI가 리포트 작성 중... (30초 대기)
-                </span>
-              ) : (
-                '🚀 완전 자동으로 AI 리포트 생성'
-              )}
-            </button>
-
-            {/* Progress Log */}
-            {progress.length > 0 && (
-              <div className="bg-slate-800/50 rounded-2xl p-6 border border-slate-700/50">
-                <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                  <RefreshCw className={`w-5 h-5 ${isGenerating ? 'animate-spin text-blue-400' : 'text-green-400'}`} />
-                  진행 상황
-                </h3>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {progress.map((item, idx) => (
-                    <div key={idx} className="flex items-start gap-3 text-sm">
-                      <span className="text-slate-400 flex-shrink-0">{item.time}</span>
-                      <span className={`${
-                        item.type === 'success' ? 'text-green-300' :
-                        item.type === 'error' ? 'text-red-300' :
-                        'text-slate-200'
-                      }`}>{item.message}</span>
-                    </div>
-                  ))}
-                </div>
-                
-                {error && (
-                  <div className="mt-4 bg-red-500/10 border border-red-500/30 rounded-lg p-4">
-                    <p className="text-red-300 font-semibold">오류: {error}</p>
-                    <p className="text-xs text-red-400 mt-2">
-                      Vercel 환경 변수에 ANTHROPIC_API_KEY가 설정되어 있는지 확인하세요.
+                  <label
+                    htmlFor="file-upload"
+                    className="flex flex-col items-center cursor-pointer"
+                  >
+                    <FileText className="w-10 h-10 text-slate-400 mb-2" />
+                    <p className="text-sm font-medium text-slate-700">
+                      파일을 선택하거나 드래그하세요
                     </p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      PDF, DOC, DOCX, TXT 지원
+                    </p>
+                  </label>
+                </div>
+
+                {/* Uploaded Files List */}
+                {uploadedFiles.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {uploadedFiles.map((file, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg"
+                      >
+                        <div className="flex items-center space-x-3">
+                          <FileText className="w-4 h-4 text-blue-600" />
+                          <div>
+                            <p className="text-sm font-medium text-slate-900">{file.name}</p>
+                            <p className="text-xs text-slate-500">{file.size}</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => removeFile(index)}
+                          className="p-1 hover:bg-slate-200 rounded transition-colors"
+                        >
+                          <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
-            )}
+
+              {/* Additional Info */}
+              <div className="mb-6">
+                <label className="block text-sm font-semibold text-slate-900 mb-2">
+                  추가 정보 (선택)
+                </label>
+                <textarea
+                  value={additionalInfo}
+                  onChange={(e) => setAdditionalInfo(e.target.value)}
+                  placeholder="특정 분석 관점이나 추가 고려사항을 입력하세요"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all resize-none"
+                  rows="3"
+                />
+              </div>
+
+              {/* Error Message */}
+              {error && (
+                <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded flex items-start space-x-3">
+                  <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-red-900">오류 발생</p>
+                    <p className="text-sm text-red-700">{error}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Generate Button */}
+              <button
+                onClick={generateReport}
+                disabled={isGenerating}
+                className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 text-white font-semibold rounded-lg transition-all flex items-center justify-center space-x-2 disabled:cursor-not-allowed"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader className="w-5 h-5 animate-spin" />
+                    <span>분석 진행 중...</span>
+                  </>
+                ) : (
+                  <>
+                    <BarChart3 className="w-5 h-5" />
+                    <span>리포트 생성</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         )}
 
-        {/* Step 2: Result */}
-        {step === 2 && generatedReport && (
+        {/* Report Section */}
+        {generatedReport && (
           <div className="space-y-6">
-            <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 text-white">
-              <div className="flex justify-between items-start mb-4">
+            {/* Report Header */}
+            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+              <div className="flex items-start justify-between mb-6">
                 <div>
-                  <h2 className="text-3xl font-bold mb-2">✅ 리포트 생성 완료!</h2>
-                  <p className="text-blue-100">"{searchQuery}"</p>
+                  <h2 className="text-2xl font-bold text-slate-900 mb-1">{searchQuery}</h2>
+                  <p className="text-sm text-slate-500">생성 시각: {generatedReport.generatedAt}</p>
                 </div>
-                <button onClick={downloadReport} className="bg-white text-blue-600 px-6 py-3 rounded-xl font-bold hover:shadow-xl transition flex items-center gap-2">
-                  <Download className="w-5 h-5" />
-                  다운로드
+                <button
+                  onClick={() => {
+                    setGeneratedReport(null);
+                    setSearchQuery('');
+                    setUploadedFiles([]);
+                    setAdditionalInfo('');
+                  }}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors"
+                >
+                  새 분석
                 </button>
               </div>
-              
-              <div className="grid grid-cols-3 gap-4 mt-6">
-                <div className="bg-white/10 rounded-xl p-4">
-                  <p className="text-sm text-blue-100 mb-1">투자의견</p>
-                  <p className="text-xl font-bold">{generatedReport.rating}</p>
+
+              {/* Metrics */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                  <div className="text-xs font-medium text-slate-500 mb-2">투자 의견</div>
+                  <div className={`inline-flex items-center px-3 py-1 rounded-md text-sm font-bold border ${getRatingColor(generatedReport.rating)}`}>
+                    {generatedReport.rating}
+                  </div>
                 </div>
-                <div className="bg-white/10 rounded-xl p-4">
-                  <p className="text-sm text-blue-100 mb-1">수집 뉴스</p>
-                  <p className="text-xl font-bold">{generatedReport.newsCount}건</p>
+
+                <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                  <div className="text-xs font-medium text-slate-500 mb-2">분석 데이터</div>
+                  <div className="text-2xl font-bold text-slate-900">{generatedReport.newsCount}<span className="text-base font-normal text-slate-500 ml-1">건</span></div>
                 </div>
-                <div className="bg-white/10 rounded-xl p-4">
-                  <p className="text-sm text-blue-100 mb-1">시장 감성</p>
-                  <p className="text-xl font-bold">{generatedReport.sentiment}</p>
+
+                <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                  <div className="text-xs font-medium text-slate-500 mb-2">시장 감성</div>
+                  <div className={`text-base font-bold ${getSentimentColor(generatedReport.sentiment)}`}>
+                    {generatedReport.sentiment}
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-8 border border-slate-700/50">
-              <div className="flex items-center gap-2 mb-6">
-                <CheckCircle className="w-6 h-6 text-green-400" />
-                <h3 className="text-xl font-bold text-white">AI가 생성한 완전히 새로운 리포트</h3>
-              </div>
-              <div className="prose prose-invert max-w-none">
-                <div className="whitespace-pre-wrap text-slate-200 leading-relaxed bg-slate-900/50 rounded-xl p-6 max-h-[600px] overflow-y-auto">
-                  {generatedReport.content}
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-6">
+            {/* Action Buttons */}
+            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
               <div className="flex gap-3">
-                <Sparkles className="w-6 h-6 text-green-400 flex-shrink-0" />
-                <div className="text-sm text-slate-300">
-                  <p className="font-semibold text-white mb-2">✨ 완전 자동 생성 완료!</p>
-                  <ul className="space-y-1 list-disc list-inside">
-                    <li>실시간 뉴스 {generatedReport.newsCount}건 자동 수집</li>
-                    <li>시장 감성: {generatedReport.sentiment}</li>
-                    <li>전문 애널리스트 수준 분석</li>
-                    <li>생성 시각: {generatedReport.generatedAt}</li>
-                  </ul>
+                <button
+                  onClick={() => downloadReport('txt')}
+                  className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>다운로드</span>
+                </button>
+
+                <button
+                  onClick={speakReport}
+                  className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
+                >
+                  <Volume2 className="w-4 h-4" />
+                  <span>음성 듣기</span>
+                </button>
+
+                <button
+                  onClick={copyToClipboard}
+                  className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
+                >
+                  <Copy className="w-4 h-4" />
+                  <span>복사</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Report Content */}
+            <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+              {/* Tabs */}
+              <div className="border-b border-slate-200 px-6 pt-4">
+                <div className="flex space-x-6">
+                  <button
+                    onClick={() => setActiveTab('report')}
+                    className={`pb-3 px-1 text-sm font-semibold border-b-2 transition-colors ${
+                      activeTab === 'report'
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    전체 리포트
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('summary')}
+                    className={`pb-3 px-1 text-sm font-semibold border-b-2 transition-colors ${
+                      activeTab === 'summary'
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    요약
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-8">
+                {activeTab === 'report' && (
+                  <div className="prose prose-slate max-w-none">
+                    <div className="whitespace-pre-wrap text-slate-700 leading-relaxed text-[15px]">
+                      {generatedReport.content}
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'summary' && (
+                  <div className="space-y-6">
+                    <div className="p-5 bg-blue-50 border-l-4 border-blue-600 rounded">
+                      <h3 className="font-bold text-base text-slate-900 mb-2">핵심 요약</h3>
+                      <p className="text-sm text-slate-700 leading-relaxed">
+                        {generatedReport.content.split('\n')[0].substring(0, 300)}...
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-5 bg-emerald-50 rounded-lg border border-emerald-200">
+                        <h4 className="font-semibold text-sm text-slate-900 mb-3">주요 지표</h4>
+                        <div className="space-y-2 text-sm text-slate-700">
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">시장 감성</span>
+                            <span className="font-medium">{generatedReport.sentiment}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">투자 의견</span>
+                            <span className="font-medium">{generatedReport.rating}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">분석 데이터</span>
+                            <span className="font-medium">{generatedReport.newsCount}건</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-5 bg-amber-50 rounded-lg border border-amber-200">
+                        <h4 className="font-semibold text-sm text-slate-900 mb-3">투자 유의사항</h4>
+                        <p className="text-sm text-slate-700 leading-relaxed">
+                          본 리포트는 투자 참고 자료이며, 실제 투자 결정 시 리스크 요인을 반드시 검토하시기 바랍니다.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer Note */}
+            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
+              <div className="flex items-start space-x-3">
+                <FileText className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-sm text-slate-900 mb-1">데이터 출처</h3>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    시장 분석 데이터 {generatedReport.newsCount}건 기반 · 
+                    본 리포트는 AI 기반 분석 결과이며, 투자 결정의 참고 자료로만 활용하시기 바랍니다.
+                  </p>
                 </div>
               </div>
             </div>
@@ -357,14 +435,16 @@ const FullAutoReportGenerator = () => {
         )}
       </div>
 
-      <footer className="bg-slate-900/50 border-t border-slate-800 py-6 mt-12">
-        <div className="max-w-6xl mx-auto px-6 text-center text-slate-400 text-sm">
-          <p className="font-semibold text-white mb-2">AI 투자 리포트 생성기 v1.0 - 완전 자동화</p>
-          <p>⚡ 버튼 한 번으로 완성 | 🤖 Claude AI 직접 연동 | 📰 실시간 데이터 수집</p>
+      {/* Footer */}
+      <footer className="bg-white border-t border-slate-200 mt-16">
+        <div className="max-w-5xl mx-auto px-6 py-8">
+          <div className="text-center text-xs text-slate-500">
+            <p>© 2025 Investment Intelligence. All rights reserved.</p>
+          </div>
         </div>
       </footer>
     </div>
   );
 };
 
-export default FullAutoReportGenerator;
+export default InvestmentIntelligencePlatform;
