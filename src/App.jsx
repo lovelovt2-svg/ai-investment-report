@@ -61,6 +61,29 @@ const InvestmentIntelligencePlatform = () => {
     setFiles(selectedFiles);
   };
 
+  // 검색 주제 타입 판별
+  const getTopicType = (searchTopic) => {
+    const topicLower = searchTopic.toLowerCase();
+    
+    // 기업 키워드
+    if (/전자|바이오|제약|은행|카드|보험|증권|통신|유통|반도체|자동차|항공|해운|건설|화학|철강|에너지|식품|엔터/.test(topicLower)) {
+      return 'company';
+    }
+    
+    // 경제 키워드
+    if (/경제|금리|환율|경기|gdp|실업|물가|인플레이션|성장률|경상수지|무역수지|재정|통화정책|경제전망|경제성장/.test(topicLower)) {
+      return 'economy';
+    }
+    
+    // 산업/섹터 키워드
+    if (/산업|시장|업종|섹터|트렌드|전망/.test(topicLower)) {
+      return 'sector';
+    }
+    
+    // 기본값 (기업)
+    return 'company';
+  };
+
   // Claude 리포트 파싱 함수
   const parseClaudeReport = (reportText) => {
     const result = {
@@ -82,20 +105,30 @@ const InvestmentIntelligencePlatform = () => {
       }
     };
 
-    // 요약 추출 - 전체적인 개요
-    const summaryMatch = reportText.match(/##?\s*(?:요약|Executive Summary).*?\n+([\s\S]*?)(?=\n##|$)/i);
+    // 요약 추출 - 전체적인 개요 (다음 ## 헤더 전까지만)
+    const summaryMatch = reportText.match(/##?\s*(?:1\.\s*)?(?:요약|Executive Summary)[^\n]*\n+([\s\S]*?)(?=\n##\s*(?:2\.|핵심|주요|산업|기업|SWOT)|$)/i);
     if (summaryMatch) {
       // 요약 섹션의 텍스트만 추출 (리스트 제외)
-      const summaryText = summaryMatch[1]
+      let summaryText = summaryMatch[1]
         .split('\n')
-        .filter(line => !line.trim().match(/^[-*]\s/)) // 리스트 항목 제외
+        .filter(line => {
+          const trimmed = line.trim();
+          // 리스트 항목 제외, 빈 줄 제외
+          return trimmed.length > 0 && !trimmed.match(/^[-*]\s/);
+        })
         .join('\n')
         .trim()
         .replace(/[*#]/g, '');
-      result.summary = summaryText || reportText.substring(0, 800).replace(/[*#]/g, '');
+      
+      // 최대 500자로 제한
+      if (summaryText.length > 500) {
+        summaryText = summaryText.substring(0, 500) + '...';
+      }
+      
+      result.summary = summaryText || reportText.substring(0, 500).replace(/[*#]/g, '');
     } else {
-      // 요약 섹션이 없으면 첫 부분 사용
-      result.summary = reportText.substring(0, 800).replace(/[*#]/g, '');
+      // 요약 섹션이 없으면 첫 500자 사용
+      result.summary = reportText.substring(0, 500).replace(/[*#]/g, '');
     }
 
     // 핵심 포인트 추출 - 주요 투자 포인트만
@@ -351,12 +384,16 @@ ${report.keyPoints.join('\n')}
       // AI 애널리스트 전용 요약 생성
       const aiSummary = generateAISummary(data.report, parsedReport);
       
+      // 주제 타입 판별
+      const topicType = getTopicType(topic);
+      
       setReport({
         title: `${topic} - 투자 분석 리포트`,
         timestamp: new Date(data.metadata.timestamp).toLocaleString('ko-KR'),
         summary: parsedReport.summary || data.report.substring(0, 800).replace(/[*#]/g, ''),
         aiSummary: aiSummary, // AI 애널리스트 탭 전용
         fullReport: data.report, // 전체 리포트 원문 저장
+        topicType: topicType, // 주제 타입 저장
         metrics: {
           confidence: 85,
           dataPoints: data.metadata.newsCount,
@@ -810,12 +847,17 @@ ${report.keyPoints.join('\n')}
                     </div>
 
                     {/* Investment Recommendation */}
+                    {/* Recommendation Section - 주제 타입에 따라 다름 */}
                     <div>
                       <div
                         className="flex items-center justify-between cursor-pointer mb-3"
                         onClick={() => toggleSection('recommendation')}
                       >
-                        <h3 className="font-bold text-lg text-slate-900">투자 의견</h3>
+                        <h3 className="font-bold text-lg text-slate-900">
+                          {report.topicType === 'economy' && '주요 경제 지표 및 전망'}
+                          {report.topicType === 'sector' && '산업 전망 및 투자 기회'}
+                          {report.topicType === 'company' && '투자 의견'}
+                        </h3>
                         {expandedSections.recommendation ? (
                           <ChevronUp className="w-5 h-5 text-slate-400" />
                         ) : (
@@ -823,27 +865,82 @@ ${report.keyPoints.join('\n')}
                         )}
                       </div>
                       {expandedSections.recommendation && (
-                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-6 border border-green-200">
-                          <div className="grid md:grid-cols-2 gap-6">
-                            <div>
-                              <p className="text-sm text-slate-600 mb-1">투자의견</p>
-                              <p className="text-3xl font-bold text-green-700">{report.recommendation.opinion}</p>
+                        <>
+                          {/* 기업 분석 - 투자 의견 */}
+                          {report.topicType === 'company' && (
+                            <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-6 border border-green-200">
+                              <div className="grid md:grid-cols-2 gap-6">
+                                <div>
+                                  <p className="text-sm text-slate-600 mb-1">투자의견</p>
+                                  <p className="text-3xl font-bold text-green-700">{report.recommendation.opinion}</p>
+                                </div>
+                                <div>
+                                  <p className="text-sm text-slate-600 mb-1">목표주가</p>
+                                  <p className="text-3xl font-bold text-slate-900">{report.recommendation.targetPrice}</p>
+                                </div>
+                                <div>
+                                  <p className="text-sm text-slate-600 mb-1">현재가</p>
+                                  <p className="text-xl font-semibold text-slate-700">{report.recommendation.currentPrice}</p>
+                                </div>
+                                <div>
+                                  <p className="text-sm text-slate-600 mb-1">상승여력</p>
+                                  <p className="text-xl font-semibold text-green-600">{report.recommendation.upside}</p>
+                                </div>
+                              </div>
+                              <p className="text-sm text-slate-600 mt-4">투자기간: {report.recommendation.horizon}</p>
                             </div>
-                            <div>
-                              <p className="text-sm text-slate-600 mb-1">목표주가</p>
-                              <p className="text-3xl font-bold text-slate-900">{report.recommendation.targetPrice}</p>
+                          )}
+
+                          {/* 경제 분석 - 경제 전망 */}
+                          {report.topicType === 'economy' && (
+                            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6 border border-blue-200">
+                              <div className="grid md:grid-cols-3 gap-4 mb-4">
+                                <div className="bg-white p-4 rounded-lg border border-slate-200">
+                                  <p className="text-xs text-slate-600 mb-2">경제 전망</p>
+                                  <p className="text-xl font-bold text-slate-900">{report.recommendation.opinion || '중립적'}</p>
+                                </div>
+                                <div className="bg-white p-4 rounded-lg border border-slate-200">
+                                  <p className="text-xs text-slate-600 mb-2">전망 기간</p>
+                                  <p className="text-xl font-semibold text-slate-900">{report.recommendation.horizon || '6-12개월'}</p>
+                                </div>
+                                <div className="bg-white p-4 rounded-lg border border-slate-200">
+                                  <p className="text-xs text-slate-600 mb-2">투자자 영향</p>
+                                  <p className="text-xl font-semibold text-blue-700">분석 참조</p>
+                                </div>
+                              </div>
+                              <div className="bg-white/50 p-4 rounded-lg">
+                                <p className="text-sm text-slate-700">
+                                  📊 경제 지표, 정책 방향, 시장 전망에 대한 상세 내용은 위의 요약 및 분석 섹션을 참조하세요.
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-sm text-slate-600 mb-1">현재가</p>
-                              <p className="text-xl font-semibold text-slate-700">{report.recommendation.currentPrice}</p>
+                          )}
+
+                          {/* 산업/섹터 분석 - 산업 전망 */}
+                          {report.topicType === 'sector' && (
+                            <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-6 border border-purple-200">
+                              <div className="grid md:grid-cols-3 gap-4 mb-4">
+                                <div className="bg-white p-4 rounded-lg border border-slate-200">
+                                  <p className="text-xs text-slate-600 mb-2">산업 전망</p>
+                                  <p className="text-xl font-bold text-slate-900">{report.recommendation.opinion || '긍정적'}</p>
+                                </div>
+                                <div className="bg-white p-4 rounded-lg border border-slate-200">
+                                  <p className="text-xs text-slate-600 mb-2">전망 기간</p>
+                                  <p className="text-xl font-semibold text-slate-900">{report.recommendation.horizon || '12개월'}</p>
+                                </div>
+                                <div className="bg-white p-4 rounded-lg border border-slate-200">
+                                  <p className="text-xs text-slate-600 mb-2">투자 매력도</p>
+                                  <p className="text-xl font-semibold text-purple-700">분석 참조</p>
+                                </div>
+                              </div>
+                              <div className="bg-white/50 p-4 rounded-lg">
+                                <p className="text-sm text-slate-700">
+                                  🏭 산업 트렌드, 주요 기업 동향, 시장 규모 및 성장성에 대한 상세 내용은 위의 분석 섹션을 참조하세요.
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-sm text-slate-600 mb-1">상승여력</p>
-                              <p className="text-xl font-semibold text-green-600">{report.recommendation.upside}</p>
-                            </div>
-                          </div>
-                          <p className="text-sm text-slate-600 mt-4">투자기간: {report.recommendation.horizon}</p>
-                        </div>
+                          )}
+                        </>
                       )}
                     </div>
 
