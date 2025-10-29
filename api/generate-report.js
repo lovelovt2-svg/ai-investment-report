@@ -78,17 +78,13 @@ export default async function handler(req, res) {
     const rating = extractRating(report);
     console.log('투자 의견:', rating);
 
-    // 6. 차트 데이터 생성 (예시)
-    const chartData = newsData.length > 0 ? generateChartData(newsData) : null;
-
-    // 7. 응답
+    // 6. 응답
     return res.status(200).json({
       report: report,
       rating: rating,
       newsCount: Math.max(newsData.length, 0),
       sentiment: sentiment,
       newsList: newsData.slice(0, 10), // 최대 10개
-      chartData: chartData,
       dataSource: newsData.length > 0 ? 'naver_news' : 'ai_knowledge',
       success: true
     });
@@ -257,27 +253,6 @@ function analyzeSentiment(newsData) {
   if (positiveCount > negativeCount * 1.5) return '긍정적';
   if (negativeCount > positiveCount * 1.5) return '부정적';
   return '중립';
-}
-
-// ================================================================================
-// 차트 데이터 생성
-// ================================================================================
-function generateChartData(newsData) {
-  if (!newsData || newsData.length === 0) return null;
-
-  // 날짜별 뉴스 빈도 계산
-  const dateCount = {};
-  newsData.forEach(news => {
-    const date = new Date(news.pubDate).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
-    dateCount[date] = (dateCount[date] || 0) + 1;
-  });
-
-  const trend = Object.entries(dateCount)
-    .map(([date, value]) => ({ date, value }))
-    .sort((a, b) => new Date(a.date) - new Date(b.date))
-    .slice(-7); // 최근 7일
-
-  return { trend };
 }
 
 // ================================================================================
