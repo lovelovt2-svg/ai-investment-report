@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Search, FileText, Download, Volume2, TrendingUp, BarChart3, Target, AlertTriangle, Copy, Loader, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 const InvestmentIntelligencePlatform = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -61,7 +60,6 @@ const InvestmentIntelligencePlatform = () => {
         newsCount: data.newsCount,
         sentiment: data.sentiment,
         newsList: data.newsList || [],
-        chartData: data.chartData || null,
         generatedAt: new Date().toLocaleString('ko-KR')
       });
 
@@ -393,18 +391,6 @@ const InvestmentIntelligencePlatform = () => {
                   >
                     요약
                   </button>
-                  {generatedReport.chartData && (
-                    <button
-                      onClick={() => setActiveTab('chart')}
-                      className={`pb-3 px-1 text-sm font-semibold border-b-2 transition-colors ${
-                        activeTab === 'chart'
-                          ? 'border-blue-600 text-blue-600'
-                          : 'border-transparent text-slate-500 hover:text-slate-700'
-                      }`}
-                    >
-                      차트
-                    </button>
-                  )}
                 </div>
               </div>
 
@@ -451,24 +437,6 @@ const InvestmentIntelligencePlatform = () => {
                           본 리포트는 투자 참고 자료이며, 실제 투자 결정 시 리스크 요인을 반드시 검토하시기 바랍니다.
                         </p>
                       </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeTab === 'chart' && generatedReport.chartData && (
-                  <div className="space-y-6">
-                    <div>
-                      <h3 className="font-bold text-base text-slate-900 mb-4">시장 트렌드 분석</h3>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <LineChart data={generatedReport.chartData.trend}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="date" />
-                          <YAxis />
-                          <Tooltip />
-                          <Legend />
-                          <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} />
-                        </LineChart>
-                      </ResponsiveContainer>
                     </div>
                   </div>
                 )}
