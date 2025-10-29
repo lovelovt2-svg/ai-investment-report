@@ -65,17 +65,31 @@ const InvestmentIntelligencePlatform = () => {
   const parseClaudeReport = (reportText) => {
     const result = {
       summary: '',
-      keyPoints: []
+      keyPoints: [],
+      recommendation: {
+        opinion: 'HOLD',
+        targetPrice: '-',
+        currentPrice: '-',
+        upside: '-',
+        horizon: '12개월'
+      },
+      risks: [],
+      analysis: {
+        strengths: [],
+        weaknesses: [],
+        opportunities: [],
+        threats: []
+      }
     };
 
-    // 요약 추출 (첫 번째 단락 또는 요약 섹션)
+    // 요약 추출
     const summaryMatch = reportText.match(/##?\s*요약.*?\n\n([\s\S]*?)(?=\n##|$)/i) ||
                          reportText.match(/Executive Summary.*?\n\n([\s\S]*?)(?=\n##|$)/i);
     if (summaryMatch) {
-      result.summary = summaryMatch[1].trim().substring(0, 500).replace(/[*#]/g, '');
+      result.summary = summaryMatch[1].trim().replace(/[*#]/g, '');
     } else {
-      // 요약이 없으면 첫 500자 사용
-      result.summary = reportText.substring(0, 500).replace(/[*#]/g, '');
+      // 요약이 없으면 첫 1000자 사용
+      result.summary = reportText.substring(0, 1000).replace(/[*#]/g, '');
     }
 
     // 핵심 포인트 추출
@@ -83,7 +97,72 @@ const InvestmentIntelligencePlatform = () => {
     if (pointsMatch) {
       const points = pointsMatch[1].match(/[-*]\s*(.+)/g);
       if (points) {
-        result.keyPoints = points.map(p => p.replace(/^[-*]\s*/, '').trim()).slice(0, 4);
+        result.keyPoints = points.map(p => p.replace(/^[-*]\s*/, '').replace(/[*#]/g, '').trim()).slice(0, 4);
+      }
+    }
+
+    // 투자 의견 추출
+    const opinionMatch = reportText.match(/투자.*?(?:의견|등급)[:\s]*(BUY|SELL|HOLD)/i);
+    if (opinionMatch) {
+      result.recommendation.opinion = opinionMatch[1].toUpperCase();
+    }
+
+    // 목표주가 추출
+    const targetMatch = reportText.match(/목표.*?주가[:\s]*([0-9,]+)\s*원/i);
+    if (targetMatch) {
+      result.recommendation.targetPrice = targetMatch[1] + '원';
+    }
+
+    // 현재가 추출
+    const currentMatch = reportText.match(/현재.*?주?가[:\s]*([0-9,]+)\s*원/i);
+    if (currentMatch) {
+      result.recommendation.currentPrice = currentMatch[1] + '원';
+    }
+
+    // 상승여력 계산
+    if (targetMatch && currentMatch) {
+      const target = parseInt(targetMatch[1].replace(/,/g, ''));
+      const current = parseInt(currentMatch[1].replace(/,/g, ''));
+      const upside = ((target - current) / current * 100).toFixed(1);
+      result.recommendation.upside = (upside > 0 ? '+' : '') + upside + '%';
+    }
+
+    // 리스크 추출
+    const riskMatch = reportText.match(/##?\s*리스크.*?\n([\s\S]*?)(?=\n##|$)/i);
+    if (riskMatch) {
+      const risks = riskMatch[1].match(/[-*]\s*(.+)/g);
+      if (risks) {
+        result.risks = risks.map(r => r.replace(/^[-*]\s*/, '').replace(/[*#]/g, '').trim()).slice(0, 5);
+      }
+    }
+
+    // SWOT 추출
+    const swotMatch = reportText.match(/##?\s*SWOT.*?\n([\s\S]*?)(?=\n##[^#]|$)/i);
+    if (swotMatch) {
+      const swotText = swotMatch[1];
+      
+      const strengthMatch = swotText.match(/강점.*?\n([\s\S]*?)(?=약점|기회|위협|$)/i);
+      if (strengthMatch) {
+        const items = strengthMatch[1].match(/[-*]\s*(.+)/g);
+        if (items) result.analysis.strengths = items.map(i => i.replace(/^[-*]\s*/, '').replace(/[*#]/g, '').trim()).slice(0, 3);
+      }
+
+      const weaknessMatch = swotText.match(/약점.*?\n([\s\S]*?)(?=강점|기회|위협|$)/i);
+      if (weaknessMatch) {
+        const items = weaknessMatch[1].match(/[-*]\s*(.+)/g);
+        if (items) result.analysis.weaknesses = items.map(i => i.replace(/^[-*]\s*/, '').replace(/[*#]/g, '').trim()).slice(0, 3);
+      }
+
+      const opportunityMatch = swotText.match(/기회.*?\n([\s\S]*?)(?=강점|약점|위협|$)/i);
+      if (opportunityMatch) {
+        const items = opportunityMatch[1].match(/[-*]\s*(.+)/g);
+        if (items) result.analysis.opportunities = items.map(i => i.replace(/^[-*]\s*/, '').replace(/[*#]/g, '').trim()).slice(0, 3);
+      }
+
+      const threatMatch = swotText.match(/위협.*?\n([\s\S]*?)(?=강점|약점|기회|$)/i);
+      if (threatMatch) {
+        const items = threatMatch[1].match(/[-*]\s*(.+)/g);
+        if (items) result.analysis.threats = items.map(i => i.replace(/^[-*]\s*/, '').replace(/[*#]/g, '').trim()).slice(0, 3);
       }
     }
 
@@ -107,9 +186,20 @@ const InvestmentIntelligencePlatform = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          searchQuery: `${topic}에 대한 질문: ${customQuestion}`,
+          searchQuery: `다음 질문에 대해 핵심만 간결하게 답변해주세요. 질문: "${customQuestion}". 주제: ${topic}`,
           uploadedFiles: [],
-          additionalInfo: `기존 리포트 컨텍스트: ${report.fullReport?.substring(0, 1000) || report.summary}`
+          additionalInfo: `
+기존 리포트 요약: ${report.summary}
+
+핵심 포인트:
+${report.keyPoints.join('\n')}
+
+투자 의견: ${report.recommendation.opinion}
+목표주가: ${report.recommendation.targetPrice}
+
+위 정보를 바탕으로 질문에 대해 핵심 내용만 3-5문장으로 간결하게 답변하세요.
+불필요한 서론이나 부연 설명 없이 질문의 핵심에만 답하세요.
+          `
         })
       });
 
@@ -120,10 +210,22 @@ const InvestmentIntelligencePlatform = () => {
       const data = await response.json();
       
       if (data.success) {
+        // 마크다운 기호 제거하고 깔끔한 텍스트로
+        let cleanAnswer = data.report
+          .replace(/[*#_~`]/g, '')
+          .replace(/\[.*?\]\(.*?\)/g, '')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+        
+        // 첫 300자만 사용 (핵심만)
+        if (cleanAnswer.length > 300) {
+          cleanAnswer = cleanAnswer.substring(0, 300) + '...';
+        }
+        
         setQuestionAnswer({
           question: customQuestion,
-          answer: data.report.substring(0, 1000).replace(/[*#]/g, ''),
-          confidence: '중간'
+          answer: cleanAnswer,
+          confidence: '높음'
         });
         setCustomQuestion('');
       }
@@ -186,6 +288,25 @@ const InvestmentIntelligencePlatform = () => {
           '중국 경기 둔화 및 지정학적 리스크는 단기 변동성 요인',
           '장기적 산업 성장성과 기술 경쟁력은 여전히 유효'
         ],
+        analysis: parsedReport.analysis || {
+          strengths: ['AI 반도체 시장 선도', '차세대 공정 기술력', '글로벌 시장 점유율 상승'],
+          weaknesses: ['중국 시장 의존도', '환율 변동성', '설비 투자 부담'],
+          opportunities: ['AI 데이터센터 수요 증가', '전기차 반도체 시장 확대', '정부 지원책'],
+          threats: ['미중 무역 분쟁', '글로벌 경기 침체', '경쟁사 추격']
+        },
+        risks: parsedReport.risks || [
+          '지정학적 리스크로 인한 수출 규제 가능성',
+          '글로벌 경기 둔화 시 IT 수요 위축',
+          '메모리 반도체 가격 변동성 확대',
+          '환율 급등 시 영업이익 감소 위험'
+        ],
+        recommendation: parsedReport.recommendation || {
+          opinion: 'BUY',
+          targetPrice: '-',
+          currentPrice: '-',
+          upside: '-',
+          horizon: '12개월'
+        },
         analysis: {
           strengths: [
             'AI 반도체 시장 선도 기업 보유',
@@ -430,19 +551,31 @@ const InvestmentIntelligencePlatform = () => {
               {/* Metrics */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-blue-50 rounded-lg p-4">
-                  <p className="text-xs text-blue-600 font-medium mb-1">신뢰도</p>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs text-blue-600 font-medium">신뢰도</p>
+                    <span className="text-xs text-blue-500 cursor-help" title="AI 분석의 확신 정도">ⓘ</span>
+                  </div>
                   <p className="text-2xl font-bold text-blue-900">{report.metrics.confidence}%</p>
                 </div>
                 <div className="bg-green-50 rounded-lg p-4">
-                  <p className="text-xs text-green-600 font-medium mb-1">데이터 포인트</p>
-                  <p className="text-2xl font-bold text-green-900">{report.metrics.dataPoints}</p>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs text-green-600 font-medium">수집 뉴스</p>
+                    <span className="text-xs text-green-500 cursor-help" title="분석에 활용된 뉴스 기사 수">ⓘ</span>
+                  </div>
+                  <p className="text-2xl font-bold text-green-900">{report.metrics.dataPoints}건</p>
                 </div>
                 <div className="bg-purple-50 rounded-lg p-4">
-                  <p className="text-xs text-purple-600 font-medium mb-1">참조 자료</p>
-                  <p className="text-2xl font-bold text-purple-900">{report.metrics.sources}</p>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs text-purple-600 font-medium">분석 출처</p>
+                    <span className="text-xs text-purple-500 cursor-help" title="참조한 뉴스 소스 수">ⓘ</span>
+                  </div>
+                  <p className="text-2xl font-bold text-purple-900">{report.metrics.sources}개</p>
                 </div>
                 <div className="bg-amber-50 rounded-lg p-4">
-                  <p className="text-xs text-amber-600 font-medium mb-1">정확도</p>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs text-amber-600 font-medium">데이터 품질</p>
+                    <span className="text-xs text-amber-500 cursor-help" title="수집된 데이터의 신뢰성">ⓘ</span>
+                  </div>
                   <p className="text-2xl font-bold text-amber-900">{report.metrics.accuracy}%</p>
                 </div>
               </div>
@@ -494,7 +627,7 @@ const InvestmentIntelligencePlatform = () => {
                         )}
                       </div>
                       {expandedSections.summary && (
-                        <p className="text-slate-700 leading-relaxed mt-4">{report.summary}</p>
+                        <p className="text-slate-700 leading-relaxed mt-4 whitespace-pre-line">{report.summary}</p>
                       )}
                     </div>
 
@@ -717,7 +850,7 @@ const InvestmentIntelligencePlatform = () => {
                           <h3 className="text-xl font-bold text-slate-900 mb-3">
                             📊 핵심 요약
                           </h3>
-                          <p className="text-slate-700 leading-relaxed">
+                          <p className="text-slate-700 leading-relaxed whitespace-pre-line">
                             {report.summary}
                           </p>
                         </div>
