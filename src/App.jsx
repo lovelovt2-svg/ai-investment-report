@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Search, FileText, Download, Volume2, TrendingUp, BarChart3, Target, AlertTriangle, Copy, Loader } from 'lucide-react';
+import { Search, FileText, Download, Volume2, TrendingUp, BarChart3, Target, AlertTriangle, Copy, Loader, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 const InvestmentIntelligencePlatform = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -9,12 +10,15 @@ const InvestmentIntelligencePlatform = () => {
   const [generatedReport, setGeneratedReport] = useState(null);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('report');
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [expandedNews, setExpandedNews] = useState(false);
 
   const handleFileUpload = (e) => {
     const files = Array.from(e.target.files);
     const newFiles = files.map(file => ({
       name: file.name,
-      size: (file.size / 1024 / 1024).toFixed(2) + ' MB'
+      size: (file.size / 1024 / 1024).toFixed(2) + ' MB',
+      file: file
     }));
     setUploadedFiles([...uploadedFiles, ...newFiles]);
   };
@@ -39,7 +43,7 @@ const InvestmentIntelligencePlatform = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           searchQuery,
-          uploadedFiles,
+          uploadedFiles: uploadedFiles.map(f => ({ name: f.name, size: f.size })),
           additionalInfo
         })
       });
@@ -56,6 +60,8 @@ const InvestmentIntelligencePlatform = () => {
         rating: data.rating,
         newsCount: data.newsCount,
         sentiment: data.sentiment,
+        newsList: data.newsList || [],
+        chartData: data.chartData || null,
         generatedAt: new Date().toLocaleString('ko-KR')
       });
 
@@ -84,10 +90,30 @@ const InvestmentIntelligencePlatform = () => {
     if (!generatedReport) return;
     
     if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(generatedReport.content);
+      if (isSpeaking) {
+        window.speechSynthesis.cancel();
+        setIsSpeaking(false);
+        return;
+      }
+
+      let cleanText = generatedReport.content
+        .replace(/#{1,6}\s/g, '')
+        .replace(/\*\*/g, '')
+        .replace(/\*/g, '')
+        .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
+        .replace(/`/g, '')
+        .replace(/---+/g, '')
+        .replace(/^\s*[-*+]\s/gm, '')
+        .replace(/^\s*\d+\.\s/gm, '')
+        .trim();
+
+      const utterance = new SpeechSynthesisUtterance(cleanText);
       utterance.lang = 'ko-KR';
       utterance.rate = 1.0;
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+      
       window.speechSynthesis.speak(utterance);
     } else {
       alert('음성 읽기 기능을 지원하지 않는 브라우저입니다.');
@@ -112,35 +138,37 @@ const InvestmentIntelligencePlatform = () => {
     return 'text-slate-600';
   };
 
+  // 차트 데이터 (예시)
+  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444'];
+
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
       <header className="bg-white border-b border-slate-200">
-        <div className="max-w-5xl mx-auto px-6 py-6">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
               <TrendingUp className="w-6 h-6 text-white" />
             </div>
             <div>
               <h1 className="text-xl font-bold text-slate-900">Investment Intelligence</h1>
-              <p className="text-sm text-slate-500">스마트 투자 리서치</p>
+              <p className="text-sm text-slate-500">AI 기반 투자 분석 시스템</p>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="max-w-5xl mx-auto px-6 py-8">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
         {/* Input Section */}
         {!generatedReport && (
           <div className="bg-white rounded-lg shadow-sm border border-slate-200">
-            <div className="p-8">
-              {/* Title */}
+            <div className="p-6 sm:p-8">
               <h2 className="text-2xl font-bold text-slate-900 mb-6">투자 분석 리포트 생성</h2>
 
               {/* Usage Guide */}
-              <div className="mb-8 p-4 bg-blue-50 border-l-4 border-blue-600 rounded">
+              <div className="mb-6 p-4 bg-blue-50 border-l-4 border-blue-600 rounded">
                 <p className="text-sm text-slate-700">
-                  <span className="font-semibold">사용방법:</span> 분석 주제 입력 → 증권사 리포트 업로드(선택) → 리포트 생성
+                  <span className="font-semibold">💡 AI 분석:</span> 네이버 뉴스 데이터 수집 → Claude AI 분석 → 투자 리포트 자동 생성
                 </p>
               </div>
 
@@ -190,7 +218,6 @@ const InvestmentIntelligencePlatform = () => {
                   </label>
                 </div>
 
-                {/* Uploaded Files List */}
                 {uploadedFiles.length > 0 && (
                   <div className="mt-3 space-y-2">
                     {uploadedFiles.map((file, index) => (
@@ -271,7 +298,7 @@ const InvestmentIntelligencePlatform = () => {
           <div className="space-y-6">
             {/* Report Header */}
             <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
-              <div className="flex items-start justify-between mb-6">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-6 gap-4">
                 <div>
                   <h2 className="text-2xl font-bold text-slate-900 mb-1">{searchQuery}</h2>
                   <p className="text-sm text-slate-500">생성 시각: {generatedReport.generatedAt}</p>
@@ -283,14 +310,14 @@ const InvestmentIntelligencePlatform = () => {
                     setUploadedFiles([]);
                     setAdditionalInfo('');
                   }}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
                 >
                   새 분석
                 </button>
               </div>
 
               {/* Metrics */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
                   <div className="text-xs font-medium text-slate-500 mb-2">투자 의견</div>
                   <div className={`inline-flex items-center px-3 py-1 rounded-md text-sm font-bold border ${getRatingColor(generatedReport.rating)}`}>
@@ -314,7 +341,7 @@ const InvestmentIntelligencePlatform = () => {
 
             {/* Action Buttons */}
             <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <button
                   onClick={() => downloadReport('txt')}
                   className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
@@ -325,10 +352,10 @@ const InvestmentIntelligencePlatform = () => {
 
                 <button
                   onClick={speakReport}
-                  className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors flex items-center justify-center space-x-2"
+                  className={`flex-1 px-4 py-3 ${isSpeaking ? 'bg-red-100 hover:bg-red-200 text-red-700' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'} text-sm font-medium rounded-lg transition-colors flex items-center justify-center space-x-2`}
                 >
                   <Volume2 className="w-4 h-4" />
-                  <span>음성 듣기</span>
+                  <span>{isSpeaking ? '멈추기' : '음성 듣기'}</span>
                 </button>
 
                 <button
@@ -366,10 +393,22 @@ const InvestmentIntelligencePlatform = () => {
                   >
                     요약
                   </button>
+                  {generatedReport.chartData && (
+                    <button
+                      onClick={() => setActiveTab('chart')}
+                      className={`pb-3 px-1 text-sm font-semibold border-b-2 transition-colors ${
+                        activeTab === 'chart'
+                          ? 'border-blue-600 text-blue-600'
+                          : 'border-transparent text-slate-500 hover:text-slate-700'
+                      }`}
+                    >
+                      차트
+                    </button>
+                  )}
                 </div>
               </div>
 
-              <div className="p-8">
+              <div className="p-6 sm:p-8">
                 {activeTab === 'report' && (
                   <div className="prose prose-slate max-w-none">
                     <div className="whitespace-pre-wrap text-slate-700 leading-relaxed text-[15px]">
@@ -387,7 +426,7 @@ const InvestmentIntelligencePlatform = () => {
                       </p>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="p-5 bg-emerald-50 rounded-lg border border-emerald-200">
                         <h4 className="font-semibold text-sm text-slate-900 mb-3">주요 지표</h4>
                         <div className="space-y-2 text-sm text-slate-700">
@@ -415,29 +454,85 @@ const InvestmentIntelligencePlatform = () => {
                     </div>
                   </div>
                 )}
+
+                {activeTab === 'chart' && generatedReport.chartData && (
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="font-bold text-base text-slate-900 mb-4">시장 트렌드 분석</h3>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <LineChart data={generatedReport.chartData.trend}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" />
+                          <YAxis />
+                          <Tooltip />
+                          <Legend />
+                          <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Footer Note */}
-            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
-              <div className="flex items-start space-x-3">
-                <FileText className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="font-semibold text-sm text-slate-900 mb-1">데이터 출처</h3>
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    시장 분석 데이터 {generatedReport.newsCount}건 기반 · 
-                    본 리포트는 AI 기반 분석 결과이며, 투자 결정의 참고 자료로만 활용하시기 바랍니다.
-                  </p>
+            {/* News Sources */}
+            {generatedReport.newsCount > 0 && (
+              <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold text-base text-slate-900 flex items-center space-x-2">
+                    <FileText className="w-5 h-5 text-blue-600" />
+                    <span>뉴스 출처 ({generatedReport.newsCount}건)</span>
+                  </h3>
+                  {generatedReport.newsList && generatedReport.newsList.length > 0 && (
+                    <button
+                      onClick={() => setExpandedNews(!expandedNews)}
+                      className="flex items-center space-x-1 text-sm text-blue-600 hover:text-blue-700"
+                    >
+                      <span>{expandedNews ? '접기' : '펼치기'}</span>
+                      {expandedNews ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </button>
+                  )}
                 </div>
+                
+                {generatedReport.newsList && generatedReport.newsList.length > 0 && expandedNews && (
+                  <div className="space-y-2 mb-4 max-h-80 overflow-y-auto">
+                    {generatedReport.newsList.map((news, index) => (
+                      <a
+                        key={index}
+                        href={news.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block p-3 bg-slate-50 hover:bg-slate-100 rounded border border-slate-200 transition-colors group"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-slate-900 line-clamp-2 group-hover:text-blue-600">
+                              {news.title}
+                            </p>
+                            <p className="text-xs text-slate-500 mt-1">
+                              {new Date(news.pubDate).toLocaleDateString('ko-KR')}
+                            </p>
+                          </div>
+                          <ExternalLink className="w-4 h-4 text-slate-400 flex-shrink-0 ml-2" />
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                )}
+                
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  네이버 뉴스 API를 통해 수집된 데이터를 Claude AI가 분석하여 작성되었습니다. 
+                  본 리포트는 투자 결정의 참고 자료로만 활용하시기 바랍니다.
+                </p>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>
 
       {/* Footer */}
       <footer className="bg-white border-t border-slate-200 mt-16">
-        <div className="max-w-5xl mx-auto px-6 py-8">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
           <div className="text-center text-xs text-slate-500">
             <p>© 2025 Investment Intelligence. All rights reserved.</p>
           </div>
