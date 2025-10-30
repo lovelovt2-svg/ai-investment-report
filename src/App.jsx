@@ -73,6 +73,188 @@ const InvestmentIntelligencePlatform = () => {
   // ==========================================
   // 시각화 컴포넌트들
   // ==========================================
+  
+  // 경제 지표 차트 (경제 분석용)
+  const EconomicIndicatorsChart = ({ topicType }) => {
+    if (topicType !== 'economy') return null;
+    
+    return (
+      <div className="bg-white rounded-lg p-4 border border-slate-200">
+        <h4 className="text-sm font-semibold text-slate-900 mb-3">📊 주요 경제 지표 현황</h4>
+        <div className="space-y-4">
+          {/* 금리 */}
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-medium text-gray-700">미국 기준금리</span>
+              <span className="text-sm font-bold text-blue-600">5.25-5.50%</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="bg-blue-500 h-2 rounded-full" style={{ width: '55%' }}></div>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">연준 11월 FOMC 동결 예상</p>
+          </div>
+          
+          {/* 환율 */}
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-medium text-gray-700">원/달러 환율</span>
+              <span className="text-sm font-bold text-green-600">1,343.5원</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="bg-green-500 h-2 rounded-full" style={{ width: '65%' }}></div>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">전일 대비 +2.3원</p>
+          </div>
+          
+          {/* 인플레이션 */}
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-medium text-gray-700">미국 CPI (YoY)</span>
+              <span className="text-sm font-bold text-red-600">3.7%</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="bg-red-500 h-2 rounded-full" style={{ width: '37%' }}></div>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">목표치 2% 상회</p>
+          </div>
+          
+          {/* GDP */}
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-medium text-gray-700">미국 GDP 성장률</span>
+              <span className="text-sm font-bold text-purple-600">4.9%</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="bg-purple-500 h-2 rounded-full" style={{ width: '49%' }}></div>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">3분기 속보치</p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+  
+  // 국채 수익률 곡선 (경제 분석용)
+  const YieldCurveChart = ({ topicType }) => {
+    if (topicType !== 'economy') return null;
+    
+    const yieldData = [
+      { maturity: '3M', yield: 5.59 },
+      { maturity: '6M', yield: 5.56 },
+      { maturity: '1Y', yield: 5.40 },
+      { maturity: '2Y', yield: 5.05 },
+      { maturity: '5Y', yield: 4.85 },
+      { maturity: '10Y', yield: 4.89 },
+      { maturity: '30Y', yield: 5.03 }
+    ];
+    
+    return (
+      <div className="bg-white rounded-lg p-4 border border-slate-200">
+        <h4 className="text-sm font-semibold text-slate-900 mb-3">📈 미국 국채 수익률 곡선</h4>
+        <div className="space-y-2">
+          {yieldData.map((item, idx) => (
+            <div key={idx} className="flex items-center gap-3">
+              <span className="w-10 text-xs font-medium text-gray-600">{item.maturity}</span>
+              <div className="flex-1 bg-gray-200 rounded-full h-4 relative">
+                <div 
+                  className={`h-full rounded-full ${
+                    item.yield > 5.2 ? 'bg-red-500' : 
+                    item.yield > 5.0 ? 'bg-orange-500' : 
+                    'bg-blue-500'
+                  }`}
+                  style={{ width: `${(item.yield / 6) * 100}%` }}
+                />
+                <span className="absolute right-2 top-0 h-full flex items-center text-xs font-medium">
+                  {item.yield.toFixed(2)}%
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 p-2 bg-yellow-50 rounded text-xs text-yellow-800">
+          ⚠️ 2Y-10Y 역전: {(4.89 - 5.05).toFixed(2)}bp (경기침체 시그널)
+        </div>
+      </div>
+    );
+  };
+  
+  // 주요국 금리 비교 (경제 분석용)
+  const GlobalRatesComparison = ({ topicType }) => {
+    if (topicType !== 'economy') return null;
+    
+    const rates = [
+      { country: '🇺🇸 미국', rate: 5.50, change: 0 },
+      { country: '🇪🇺 유럽', rate: 4.50, change: 0 },
+      { country: '🇬🇧 영국', rate: 5.25, change: 0 },
+      { country: '🇯🇵 일본', rate: -0.10, change: 0 },
+      { country: '🇰🇷 한국', rate: 3.50, change: 0 },
+      { country: '🇨🇳 중국', rate: 3.45, change: -0.15 }
+    ];
+    
+    return (
+      <div className="bg-white rounded-lg p-4 border border-slate-200">
+        <h4 className="text-sm font-semibold text-slate-900 mb-3">🌍 주요국 기준금리</h4>
+        <div className="space-y-2">
+          {rates.map((item, idx) => (
+            <div key={idx} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded">
+              <span className="text-sm font-medium">{item.country}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold">{item.rate.toFixed(2)}%</span>
+                {item.change !== 0 && (
+                  <span className={`text-xs ${item.change > 0 ? 'text-red-600' : 'text-blue-600'}`}>
+                    {item.change > 0 ? '+' : ''}{item.change.toFixed(2)}%p
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+  
+  // 경제 전망 지표 (경제 분석용)
+  const EconomicOutlookPanel = ({ topicType, analysis }) => {
+    if (topicType !== 'economy') return null;
+    
+    return (
+      <div className="bg-white rounded-lg p-4 border border-slate-200">
+        <h4 className="text-sm font-semibold text-slate-900 mb-3">🔮 경제 전망 시나리오</h4>
+        <div className="space-y-3">
+          <div className="p-3 bg-green-50 rounded-lg">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm font-semibold text-green-800">소프트 랜딩</span>
+              <span className="text-sm font-bold text-green-600">40%</span>
+            </div>
+            <p className="text-xs text-green-700">인플레 하락 + 경기 연착륙</p>
+          </div>
+          
+          <div className="p-3 bg-yellow-50 rounded-lg">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm font-semibold text-yellow-800">경기 둔화</span>
+              <span className="text-sm font-bold text-yellow-600">35%</span>
+            </div>
+            <p className="text-xs text-yellow-700">성장률 하락 + 실업률 상승</p>
+          </div>
+          
+          <div className="p-3 bg-red-50 rounded-lg">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm font-semibold text-red-800">경기 침체</span>
+              <span className="text-sm font-bold text-red-600">25%</span>
+            </div>
+            <p className="text-xs text-red-700">2분기 연속 마이너스 성장</p>
+          </div>
+        </div>
+        
+        {analysis?.outlook && (
+          <div className="mt-3 pt-3 border-t">
+            <p className="text-xs text-gray-600">{analysis.outlook}</p>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const SectorHeatmap = ({ data }) => {
     if (!data || data.length === 0) return null;
     
@@ -936,21 +1118,50 @@ const InvestmentIntelligencePlatform = () => {
                   </div>
                 ) : activeTab === 'visualization' ? (
                   <div className="grid md:grid-cols-2 gap-6">
+                    {/* 감성 분석은 모든 타입에서 표시 */}
                     <SentimentGauge 
                       sentiment={report.metrics.sentiment} 
                       score={report.metrics.sentimentScore} 
                     />
                     
-                    {report.recommendation && (
-                      <InvestmentOpinionDetail 
-                        recommendation={report.recommendation}
-                      />
+                    {/* 기업 분석 시각화 */}
+                    {report.topicType === 'company' && (
+                      <>
+                        {report.recommendation && (
+                          <InvestmentOpinionDetail 
+                            recommendation={report.recommendation}
+                          />
+                        )}
+                        {report.sectorData && report.sectorData.length > 0 && (
+                          <div className="md:col-span-2">
+                            <SectorHeatmap data={report.sectorData} />
+                          </div>
+                        )}
+                      </>
                     )}
                     
-                    {report.sectorData && report.sectorData.length > 0 && (
-                      <div className="md:col-span-2">
-                        <SectorHeatmap data={report.sectorData} />
-                      </div>
+                    {/* 경제 분석 시각화 */}
+                    {report.topicType === 'economy' && (
+                      <>
+                        <EconomicIndicatorsChart topicType={report.topicType} />
+                        <YieldCurveChart topicType={report.topicType} />
+                        <GlobalRatesComparison topicType={report.topicType} />
+                        <EconomicOutlookPanel 
+                          topicType={report.topicType} 
+                          analysis={report.analysis}
+                        />
+                      </>
+                    )}
+                    
+                    {/* 산업 분석 시각화 */}
+                    {report.topicType === 'sector' && (
+                      <>
+                        {report.sectorData && report.sectorData.length > 0 && (
+                          <div className="md:col-span-2">
+                            <SectorHeatmap data={report.sectorData} />
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 ) : (
