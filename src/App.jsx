@@ -758,76 +758,82 @@ ${report.keyPoints.join('\n')}
                       </div>
                     </div>
 
-                    {/* SWOT Analysis */}
-                    <div>
-                      <div
-                        className="flex items-center justify-between cursor-pointer mb-3"
-                        onClick={() => toggleSection('analysis')}
-                      >
-                        <h3 className="font-bold text-lg text-slate-900">SWOT 분석</h3>
-                        {expandedSections.analysis ? (
-                          <ChevronUp className="w-5 h-5 text-slate-400" />
-                        ) : (
-                          <ChevronDown className="w-5 h-5 text-slate-400" />
+                    {/* SWOT Analysis - 기업만 표시 */}
+                    {report.topicType === 'company' && (
+                      <div>
+                        <div
+                          className="flex items-center justify-between cursor-pointer mb-3"
+                          onClick={() => toggleSection('analysis')}
+                        >
+                          <h3 className="font-bold text-lg text-slate-900">SWOT 분석</h3>
+                          {expandedSections.analysis ? (
+                            <ChevronUp className="w-5 h-5 text-slate-400" />
+                          ) : (
+                            <ChevronDown className="w-5 h-5 text-slate-400" />
+                          )}
+                        </div>
+                        {expandedSections.analysis && (
+                          <div className="grid md:grid-cols-2 gap-4">
+                            <div className="bg-green-50 rounded-lg p-5 border border-green-200">
+                              <h4 className="font-semibold text-green-900 mb-3">강점 (Strengths)</h4>
+                              <ul className="space-y-2">
+                                {report.analysis.strengths.map((item, index) => (
+                                  <li key={index} className="text-sm text-green-800 flex items-start">
+                                    <span className="mr-2">•</span>
+                                    <span>{item}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                            <div className="bg-red-50 rounded-lg p-5 border border-red-200">
+                              <h4 className="font-semibold text-red-900 mb-3">약점 (Weaknesses)</h4>
+                              <ul className="space-y-2">
+                                {report.analysis.weaknesses.map((item, index) => (
+                                  <li key={index} className="text-sm text-red-800 flex items-start">
+                                    <span className="mr-2">•</span>
+                                    <span>{item}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                            <div className="bg-blue-50 rounded-lg p-5 border border-blue-200">
+                              <h4 className="font-semibold text-blue-900 mb-3">기회 (Opportunities)</h4>
+                              <ul className="space-y-2">
+                                {report.analysis.opportunities.map((item, index) => (
+                                  <li key={index} className="text-sm text-blue-800 flex items-start">
+                                    <span className="mr-2">•</span>
+                                    <span>{item}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                            <div className="bg-amber-50 rounded-lg p-5 border border-amber-200">
+                              <h4 className="font-semibold text-amber-900 mb-3">위협 (Threats)</h4>
+                              <ul className="space-y-2">
+                                {report.analysis.threats.map((item, index) => (
+                                  <li key={index} className="text-sm text-amber-800 flex items-start">
+                                    <span className="mr-2">•</span>
+                                    <span>{item}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
                         )}
                       </div>
-                      {expandedSections.analysis && (
-                        <div className="grid md:grid-cols-2 gap-4">
-                          <div className="bg-green-50 rounded-lg p-5 border border-green-200">
-                            <h4 className="font-semibold text-green-900 mb-3">강점 (Strengths)</h4>
-                            <ul className="space-y-2">
-                              {report.analysis.strengths.map((item, index) => (
-                                <li key={index} className="text-sm text-green-800 flex items-start">
-                                  <span className="mr-2">•</span>
-                                  <span>{item}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div className="bg-red-50 rounded-lg p-5 border border-red-200">
-                            <h4 className="font-semibold text-red-900 mb-3">약점 (Weaknesses)</h4>
-                            <ul className="space-y-2">
-                              {report.analysis.weaknesses.map((item, index) => (
-                                <li key={index} className="text-sm text-red-800 flex items-start">
-                                  <span className="mr-2">•</span>
-                                  <span>{item}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div className="bg-blue-50 rounded-lg p-5 border border-blue-200">
-                            <h4 className="font-semibold text-blue-900 mb-3">기회 (Opportunities)</h4>
-                            <ul className="space-y-2">
-                              {report.analysis.opportunities.map((item, index) => (
-                                <li key={index} className="text-sm text-blue-800 flex items-start">
-                                  <span className="mr-2">•</span>
-                                  <span>{item}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div className="bg-amber-50 rounded-lg p-5 border border-amber-200">
-                            <h4 className="font-semibold text-amber-900 mb-3">위협 (Threats)</h4>
-                            <ul className="space-y-2">
-                              {report.analysis.threats.map((item, index) => (
-                                <li key={index} className="text-sm text-amber-800 flex items-start">
-                                  <span className="mr-2">•</span>
-                                  <span>{item}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    )}
 
-                    {/* Risk Factors */}
+                    {/* Risk Factors - 제목 동적 변경 */}
                     <div>
                       <div
                         className="flex items-center justify-between cursor-pointer mb-3"
                         onClick={() => toggleSection('risk')}
                       >
-                        <h3 className="font-bold text-lg text-slate-900">리스크 요인</h3>
+                        <h3 className="font-bold text-lg text-slate-900">
+                          {report.topicType === 'economy' && '경제 리스크'}
+                          {report.topicType === 'sector' && '산업 리스크'}
+                          {report.topicType === 'company' && '리스크 요인'}
+                        </h3>
                         {expandedSections.risk ? (
                           <ChevronUp className="w-5 h-5 text-slate-400" />
                         ) : (
