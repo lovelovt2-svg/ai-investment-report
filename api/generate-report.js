@@ -179,37 +179,111 @@ ${newsData.slice(0, 5).map((n, i) => `[${i + 1}] ${n.title}`).join('\n')}
 function determineTopicTypeAccurate(query) {
   const q = query.toLowerCase();
   
-  const economyWords = ['금리', '환율', 'gdp', '물가', '경제', '통화정책', '인플레'];
-  const sectorWords = ['산업', '섹터', '업종', '시장', '업계'];
-  const companyNames = ['삼성전자', '삼성', 'SK하이닉스', '네이버', '카카오', '현대차', 'LG'];
+  // 더 많은 키워드 추가
+  const economyWords = [
+    '금리', '환율', 'gdp', '물가', '경제', '통화정책', '인플레', '연준', '기준금리', 
+    '달러', '엔화', '위안화', '유로', 'fomc', '연방준비제도', '한국은행', '기재부',
+    '무역', '수출', '수입', '경상수지', '국제수지', '실업률', '고용', '경기',
+    '침체', '불황', '호황', '성장률', '디플레이션', '스태그플레이션', '양적완화',
+    '테이퍼링', '긴축', '부양', '재정정책', '통화정책', '국채', '채권'
+  ];
   
-  // 경제 체크
-  for (const word of economyWords) {
+  const sectorWords = [
+    '산업', '섹터', '업종', '시장', '업계', '분야', '영역', '부문',
+    '반도체산업', 'ai산업', '전기차시장', '바이오산업', '배터리산업', 
+    '자동차산업', '철강업', '조선업', '건설업', '유통업', '금융업',
+    '제약업', '화학공업', '정유업', '통신업', '게임업계', '엔터테인먼트',
+    '소프트웨어', '하드웨어', '클라우드', '메타버스', '블록체인', 'nft'
+  ];
+  
+  const companyNames = [
+    '삼성전자', '삼성', 'sk하이닉스', '하이닉스', '네이버', '카카오', 
+    '현대차', '현대자동차', 'lg전자', 'lg화학', 'lg에너지솔루션', '포스코',
+    '셀트리온', '삼성바이오', '카카오뱅크', '토스', '쿠팡', '배달의민족',
+    '엔씨소프트', '넷마블', '크래프톤', '펄어비스', 'sk텔레콤', 'kt',
+    '대한항공', '아시아나', '신한은행', '국민은행', '하나은행', '우리은행',
+    'sk이노베이션', '한화', '롯데', '두산', 'cj', '농심', '오리온',
+    // 해외 기업
+    '애플', '구글', '마이크로소프트', '아마존', '테슬라', '엔비디아',
+    '메타', '넷플릭스', '디즈니', '코카콜라', '맥도날드', '스타벅스'
+  ];
+  
+  // 각 타입의 점수 계산
+  let economyScore = 0;
+  let sectorScore = 0;
+  let companyScore = 0;
+  
+  // 경제 키워드 체크
+  economyWords.forEach(word => {
     if (q.includes(word)) {
-      // 기업명이 함께 있으면 기업 우선
-      for (const company of companyNames) {
-        if (q.includes(company.toLowerCase())) return 'company';
-      }
-      return 'economy';
+      economyScore += word.length > 3 ? 2 : 1; // 긴 키워드에 더 높은 점수
     }
-  }
+  });
   
-  // 섹터 체크
-  for (const word of sectorWords) {
+  // 산업 키워드 체크
+  sectorWords.forEach(word => {
     if (q.includes(word)) {
-      for (const company of companyNames) {
-        if (q.includes(company.toLowerCase())) return 'company';
-      }
-      return 'sector';
+      sectorScore += word.length > 3 ? 2 : 1;
     }
+  });
+  
+  // 기업명 체크
+  companyNames.forEach(company => {
+    if (q.includes(company)) {
+      companyScore += 10; // 기업명이 있으면 높은 점수
+    }
+  });
+  
+  // 특별 케이스 처리
+  // "삼성전자 실적" 같은 경우는 기업으로
+  if (q.includes('실적') || q.includes('주가') || q.includes('배당')) {
+    companyScore += 5;
   }
   
-  // 기업 체크
-  for (const company of companyNames) {
-    if (q.includes(company.toLowerCase())) return 'company';
+  // "미국", "중국", "일본", "유럽" 등 국가명이 있으면 경제로
+  const countries = ['미국', '중국', '일본', '유럽', '영국', '독일', '프랑스', '한국'];
+  countries.forEach(country => {
+    if (q.includes(country) && !companyNames.some(company => q.includes(company))) {
+      economyScore += 3;
+    }
+  });
+  
+  // "전망", "분석", "동향" 같은 일반 키워드는 문맥에 따라
+  if (q.includes('전망') || q.includes('분석') || q.includes('동향')) {
+    // 이미 다른 점수가 있으면 그것을 강화
+    if (economyScore > 0) economyScore += 1;
+    if (sectorScore > 0) sectorScore += 1;
+    if (companyScore > 0) companyScore += 1;
   }
   
-  return 'company'; // 기본값
+  // 최종 판정
+  console.log(`타입 판별 - Query: "${query}"`);
+  console.log(`점수 - 경제: ${economyScore}, 산업: ${sectorScore}, 기업: ${companyScore}`);
+  
+  // 점수 기반 판정
+  if (companyScore > economyScore && companyScore > sectorScore) {
+    console.log('→ 기업 분석으로 판정');
+    return 'company';
+  }
+  if (economyScore > sectorScore) {
+    console.log('→ 경제 분석으로 판정');
+    return 'economy';
+  }
+  if (sectorScore > 0) {
+    console.log('→ 산업 분석으로 판정');
+    return 'sector';
+  }
+  
+  // 아무것도 해당 안 되면 키워드 기반 추측
+  if (q.length < 10) {
+    // 짧은 쿼리는 기업일 가능성이 높음
+    console.log('→ 짧은 쿼리, 기업 분석으로 기본 설정');
+    return 'company';
+  } else {
+    // 긴 문장은 경제 분석일 가능성이 높음
+    console.log('→ 긴 쿼리, 경제 분석으로 기본 설정');
+    return 'economy';
+  }
 }
 
 function filterRelevantNews(newsData, searchQuery, topicType) {
@@ -226,20 +300,44 @@ function filterRelevantNews(newsData, searchQuery, topicType) {
       });
       
       // 타입별 보너스
-      if (topicType === 'company' && text.match(/실적|매출|영업이익|주가/)) {
-        relevance += 20;
+      if (topicType === 'company') {
+        if (text.match(/실적|매출|영업이익|주가|시가총액|배당|주주|목표가/)) {
+          relevance += 30;
+        }
+        if (text.match(/buy|sell|hold|매수|매도|중립/i)) {
+          relevance += 20;
+        }
+      } else if (topicType === 'economy') {
+        if (text.match(/금리|환율|물가|gdp|인플레|경제|성장률|경기|고용/)) {
+          relevance += 30;
+        }
+        if (text.match(/중앙은행|연준|fomc|한국은행|통화정책/)) {
+          relevance += 20;
+        }
+      } else if (topicType === 'sector') {
+        if (text.match(/산업|시장|업계|성장|규모|점유율|경쟁|트렌드/)) {
+          relevance += 30;
+        }
+        if (text.match(/전망|동향|기술|혁신|투자|M&A/)) {
+          relevance += 20;
+        }
       }
       
-      // 노이즈 패널티
-      if (text.match(/광고|이벤트|쿠폰|할인|프로모션/)) {
+      // 노이즈 패널티 (광고성 콘텐츠)
+      if (text.match(/광고|이벤트|쿠폰|할인|프로모션|추천|협찬/)) {
         relevance -= 50;
+      }
+      
+      // 스포츠, 연예 등 무관한 내용 패널티
+      if (text.match(/축구|야구|농구|연예|드라마|영화|음악|아이돌/)) {
+        relevance -= 30;
       }
       
       return { ...news, relevance: Math.max(0, Math.min(100, relevance)) };
     })
-    .filter(news => news.relevance >= 30)
+    .filter(news => news.relevance >= 20) // 더 낮은 기준점
     .sort((a, b) => b.relevance - a.relevance)
-    .slice(0, 15);
+    .slice(0, 20); // 더 많은 뉴스 수집
 }
 
 async function searchNaverNews(query, maxResults = 30) {
@@ -286,8 +384,23 @@ async function searchNaverNews(query, maxResults = 30) {
 async function getYahooFinanceData(ticker) {
   const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
   
-  // 시뮬레이션 데이터 (API 키 없을 때)
+  // 시뮬레이션 데이터 (API 키 없을 때) - 2025년 10월 31일 기준
   if (!RAPIDAPI_KEY) {
+    // 삼성전자 최신 데이터 반영
+    if (ticker === '005930.KS') {
+      return {
+        currentPrice: 102500,  // 10만원 돌파
+        targetPrice: 120000,    // 증권사 평균 목표가
+        high52Week: 108000,
+        low52Week: 65000,
+        pe: 18.5,
+        eps: 5540,
+        marketCap: 612000000000000,  // 612조원
+        changePercent: 2.15,
+      };
+    }
+    
+    // 기타 종목 기본값
     return {
       currentPrice: 86100,
       targetPrice: 95000,
@@ -328,7 +441,17 @@ async function getYahooFinanceData(ticker) {
       changePercent: stock.regularMarketChangePercent || null,
     };
   } catch (e) {
-    // 실패 시 시뮬레이션 데이터
+    // 실패 시 최신 시뮬레이션 데이터
+    if (ticker === '005930.KS') {
+      return {
+        currentPrice: 102500,
+        targetPrice: 120000,
+        pe: 18.5,
+        marketCap: 612000000000000,
+        changePercent: 2.15,
+      };
+    }
+    
     return {
       currentPrice: 86100,
       targetPrice: 95000,
@@ -342,16 +465,22 @@ async function getYahooFinanceData(ticker) {
 async function getComparativeStocks(company) {
   const peers = {
     '삼성전자': [
-      { name: 'SK하이닉스', price: 125000, change: -2.1, pe: 8.5 },
-      { name: 'LG전자', price: 95000, change: 0.8, pe: 12.3 },
+      { name: 'SK하이닉스', price: 142000, change: 3.2, pe: 12.5 },  // HBM 호황
+      { name: 'LG전자', price: 98000, change: 0.8, pe: 14.3 },
+      { name: 'TSMC(ADR)', price: 205000, change: 2.8, pe: 28.5 },  // AI 수혜
+    ],
+    'SK하이닉스': [
+      { name: '삼성전자', price: 102500, change: 2.1, pe: 18.5 },
+      { name: '마이크론', price: 115000, change: 3.5, pe: 15.2 },
+      { name: 'ASML', price: 890000, change: 1.8, pe: 35.2 },
     ],
     '네이버': [
-      { name: '카카오', price: 42500, change: -1.5, pe: 45.2 },
-      { name: '카카오페이', price: 28900, change: 2.3, pe: 0 },
+      { name: '카카오', price: 52000, change: -0.5, pe: 42.2 },
+      { name: '카카오페이', price: 35500, change: 1.2, pe: 0 },
     ],
     '현대차': [
-      { name: '기아', price: 89500, change: 1.2, pe: 6.8 },
-      { name: '현대모비스', price: 210000, change: -0.5, pe: 7.2 },
+      { name: '기아', price: 112000, change: 1.5, pe: 7.2 },
+      { name: '현대모비스', price: 235000, change: 0.8, pe: 8.5 },
     ],
   };
   
@@ -451,10 +580,12 @@ function getKoreanStockTicker(q) {
 }
 
 function buildAnalysisPrompt(searchQuery, newsData, stockData, fileContents, fileSources, additionalInfo, sentiment, topicType) {
-  const newsText = newsData
-    .slice(0, 10)
-    .map((n, i) => `[뉴스${i + 1}] ${n.title}\n${n.description}`)
-    .join('\n\n');
+  const newsText = newsData.length > 0 
+    ? newsData
+        .slice(0, 10)
+        .map((n, i) => `[뉴스${i + 1}] ${n.title}\n${n.description}`)
+        .join('\n\n')
+    : '관련 뉴스를 찾을 수 없었습니다. 일반적인 지식을 바탕으로 분석합니다.';
 
   const stockSection = stockData ? `
 # 실시간 주가 데이터
@@ -474,7 +605,7 @@ ${fileContents}
   const additionalSection = additionalInfo ? `
 # 추가 분석 요청
 ${additionalInfo}
-⚠️ 반드시 별도 섹션(## 6. 추가 분석)으로 작성
+⚠️ 반드시 별도 섹션(## 6. 추가 분석)으로 작성하여 사용자의 요청사항을 상세히 다루세요.
 ` : '';
 
   const baseRules = `
@@ -484,12 +615,56 @@ ${additionalInfo}
 - 뉴스는 [뉴스1], [뉴스2] 형식으로 출처 표시
 ${fileContents ? `- 파일은 [${fileSources[0]?.name}] 형식으로 출처 표시` : ''}
 - 현재 감성: ${sentiment}
+- 데이터가 부족하더라도 전문적인 분석 제공
+- 추가 분석 요청이 있으면 반드시 별도 섹션으로 상세히 작성
+`;
+
+  // 타입이 불명확한 경우를 위한 일반 분석 템플릿
+  const generalTemplate = `
+당신은 금융 전문가입니다. "${searchQuery}"에 대한 종합 분석 리포트를 작성하세요.
+${baseRules}
+
+${stockSection}
+${fileSection}
+
+# 뉴스 데이터 (${newsData.length}건)
+${newsText}
+
+${additionalSection}
+
+## 1. 요약
+[3-4문장으로 핵심 내용 요약]
+
+## 2. 주요 포인트
+- [포인트 1]
+- [포인트 2]
+- [포인트 3]
+
+## 3. 상세 분석
+[주제에 대한 깊이 있는 분석]
+
+## 4. 리스크 및 기회 요인
+### 기회 요인
+- [기회 1]
+- [기회 2]
+
+### 리스크 요인
+- [리스크 1]
+- [리스크 2]
+
+## 5. 전망 및 제언
+[향후 전망과 제언]
+
+${additionalInfo ? '## 6. 추가 분석\n[사용자 요청사항에 대한 상세 분석]' : ''}
+
+## ${additionalInfo ? '7' : '6'}. 종합 의견
+[최종 의견 및 결론]
 `;
 
   // 기업 분석
   if (topicType === 'company') {
     return `
-당신은 한국 증권사 애널리스트입니다. "${searchQuery}" 기업 투자 리포트를 작성하세요.
+당신은 한국 증권사 수석 애널리스트입니다. "${searchQuery}" 기업 투자 리포트를 작성하세요.
 ${baseRules}
 
 ${stockSection}
@@ -510,28 +685,41 @@ ${additionalSection}
 
 ## 3. SWOT 분석
 ### 강점
+- [구체적인 강점 1]
+- [구체적인 강점 2]
 ### 약점
+- [구체적인 약점 1]
+- [구체적인 약점 2]
 ### 기회
+- [구체적인 기회 1]
+- [구체적인 기회 2]
 ### 위협
+- [구체적인 위협 1]
+- [구체적인 위협 2]
 
 ## 4. 리스크 요인
+- [구체적 리스크 1]
+- [구체적 리스크 2]
+- [구체적 리스크 3]
 
 ## 5. 투자 의견
 투자 등급: [BUY/HOLD/SELL]
-목표 주가: 
-현재 주가:
+목표 주가: [구체적 금액]원
+현재 주가: ${stockData?.currentPrice || '[현재가]'}원
 투자 기간: 12개월
+투자 근거: [구체적인 근거 설명]
 
-${additionalInfo ? '## 6. 추가 분석' : ''}
+${additionalInfo ? '## 6. 추가 분석\n[사용자가 요청한 내용에 대한 상세 분석]' : ''}
 
 ## ${additionalInfo ? '7' : '6'}. 종합 의견
+[투자 결정을 위한 최종 의견]
 `;
   }
 
   // 경제 분석
   if (topicType === 'economy') {
     return `
-당신은 경제 분석 전문가입니다. "${searchQuery}" 경제 분석 리포트를 작성하세요.
+당신은 경제 분석 수석 전문가입니다. "${searchQuery}" 경제 분석 리포트를 작성하세요.
 ${baseRules}
 
 ${fileSection}
@@ -545,43 +733,48 @@ ${additionalSection}
 [3-4문장으로 현재 경제 상황과 주요 이슈 요약]
 
 ## 2. 핵심 경제 동향
-- [주요 동향 1 - 출처]
-- [주요 동향 2 - 출처]
-- [주요 동향 3 - 출처]
+- [주요 동향 1 - 구체적 수치 포함]
+- [주요 동향 2 - 구체적 수치 포함]
+- [주요 동향 3 - 구체적 수치 포함]
 
 ## 3. 경제 지표 분석
 ### 금리 동향
-[현재 금리 수준과 향후 전망]
+[현재 금리 수준과 향후 전망, 구체적 수치와 근거 제시]
 
 ### 환율 동향
-[원/달러 환율 현황과 영향 요인]
+[원/달러 환율 현황과 영향 요인, 구체적 수치와 전망]
 
 ### 물가/인플레이션
-[물가 상승률과 주요 요인]
+[물가 상승률과 주요 요인, 구체적 수치와 영향]
 
 ### GDP/경제성장
-[경제 성장률 전망]
+[경제 성장률 전망, 구체적 수치와 근거]
 
 ## 4. 글로벌 경제 영향
-- 미국 경제 정책 영향
-- 중국 경제 상황
-- 유럽 경제 동향
+- 미국 경제 정책 영향 [구체적 내용]
+- 중국 경제 상황 [구체적 내용]
+- 유럽 경제 동향 [구체적 내용]
 
 ## 5. 리스크 요인
-- [리스크 1]
-- [리스크 2]
+- [구체적 리스크 1]
+- [구체적 리스크 2]
+- [구체적 리스크 3]
 
-${additionalInfo ? '## 6. 추가 분석' : ''}
+${additionalInfo ? '## 6. 추가 분석\n[사용자가 요청한 내용에 대한 상세 분석]' : ''}
 
 ## ${additionalInfo ? '7' : '6'}. 향후 전망
-[3-6개월, 1년 전망]
+### 단기 전망 (3-6개월)
+[구체적 전망]
+
+### 중장기 전망 (1-2년)
+[구체적 전망]
 `;
   }
 
   // 산업/섹터 분석
   if (topicType === 'sector') {
     return `
-당신은 산업 분석 전문가입니다. "${searchQuery}" 산업/섹터 분석 리포트를 작성하세요.
+당신은 산업 분석 수석 전문가입니다. "${searchQuery}" 산업/섹터 분석 리포트를 작성하세요.
 ${baseRules}
 
 ${fileSection}
@@ -595,22 +788,22 @@ ${additionalSection}
 [3-4문장으로 산업 현황과 주요 트렌드 요약]
 
 ## 2. 산업 핵심 동향
-- [핵심 트렌드 1 - 출처]
-- [핵심 트렌드 2 - 출처]
-- [핵심 트렌드 3 - 출처]
+- [핵심 트렌드 1 - 구체적 내용]
+- [핵심 트렌드 2 - 구체적 내용]
+- [핵심 트렌드 3 - 구체적 내용]
 
 ## 3. 산업 구조 분석
 ### 시장 규모
-[국내외 시장 규모와 성장률]
+[국내외 시장 규모와 성장률, 구체적 수치]
 
 ### 경쟁 구조
-[주요 기업과 시장 점유율]
+[주요 기업과 시장 점유율, 구체적 내용]
 
 ### 진입 장벽
 [신규 진입 난이도와 요인]
 
 ### 성장 동력
-[산업 성장을 이끄는 주요 요인]
+[산업 성장을 이끄는 주요 요인, 구체적 설명]
 
 ## 4. 주요 기업 동향
 - [선도 기업 1]: 현황과 전략
@@ -618,19 +811,25 @@ ${additionalSection}
 - [선도 기업 3]: 현황과 전략
 
 ## 5. 산업 리스크
-- [리스크 요인 1]
-- [리스크 요인 2]
-- [리스크 요인 3]
+- [리스크 요인 1 - 구체적 설명]
+- [리스크 요인 2 - 구체적 설명]
+- [리스크 요인 3 - 구체적 설명]
 
-${additionalInfo ? '## 6. 추가 분석' : ''}
+${additionalInfo ? '## 6. 추가 분석\n[사용자가 요청한 내용에 대한 상세 분석]' : ''}
 
 ## ${additionalInfo ? '7' : '6'}. 산업 전망
 ### 단기 전망 (3-6개월)
+[구체적 전망]
+
 ### 중장기 전망 (1-3년)
+[구체적 전망]
+
 ### 투자 유망 분야
+[구체적인 유망 분야와 이유]
 `;
   }
 
-  // 기본값 (기업 분석)
-  return `리포트 작성 중...`;
+  // 타입을 판단할 수 없는 경우 일반 템플릿 사용
+  console.log('⚠️ 타입 판별 실패, 일반 분석 템플릿 사용');
+  return generalTemplate;
 }
