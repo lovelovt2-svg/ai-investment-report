@@ -351,16 +351,19 @@ const InvestmentIntelligencePlatform = () => {
     setQuestionAnswer(null);
 
     try {
-      const formData = new FormData();
-      formData.append('searchQuery', topic);
-      formData.append('additionalInfo', `
-사용자가 "${question}" 라고 질문했습니다.
-간단명료하게 3-4문장으로 답변해주세요.
-`);
-
       const response = await fetch('/api/generate-report', {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          searchQuery: topic,
+          uploadedFiles: [],
+          additionalInfo: `
+사용자가 "${question}" 라고 질문했습니다.
+간단명료하게 3-4문장으로 답변해주세요.
+`
+        })
       });
 
       if (!response.ok) throw new Error('답변 생성 실패');
@@ -410,18 +413,20 @@ const InvestmentIntelligencePlatform = () => {
     setPreviousQuestions([]);
     
     try {
-      const formData = new FormData();
-      formData.append('searchQuery', topic);
-      formData.append('additionalInfo', additionalInfo);
-      
-      // 파일 추가
-      files.forEach((file, index) => {
-        formData.append(`file${index}`, file);
-      });
-
       const response = await fetch('/api/generate-report', {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          searchQuery: topic,
+          uploadedFiles: files.map(f => ({
+            name: f.name,
+            type: f.type,
+            size: f.size
+          })),
+          additionalInfo: additionalInfo
+        })
       });
 
       if (!response.ok) {
@@ -630,6 +635,22 @@ const InvestmentIntelligencePlatform = () => {
                 </div>
                 
                 <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      const element = document.createElement('a');
+                      const file = new Blob([report.fullReport], {type: 'text/plain'});
+                      element.href = URL.createObjectURL(file);
+                      element.download = `${report.title.replace(/[^a-z0-9가-힣]/gi, '_')}.txt`;
+                      document.body.appendChild(element);
+                      element.click();
+                      document.body.removeChild(element);
+                    }}
+                    className="flex items-center space-x-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200 transition-colors"
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>다운로드</span>
+                  </button>
+                  
                   <button
                     onClick={() => handleTextToSpeech()}
                     className={`px-4 py-2 rounded-lg text-sm font-medium ${
