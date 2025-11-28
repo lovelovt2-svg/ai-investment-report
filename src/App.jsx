@@ -320,7 +320,7 @@ const InvestmentIntelligencePlatform = () => {
     const targetPrice = companyMetrics?.targetPrice || stockData?.targetPrice;
     const opinion = recommendation?.opinion || 'HOLD';
     const source = stockData?.source || 'Unknown';
-    const isRealtime = source.includes('실시간') || source.includes('Yahoo');
+    const isRealtime = source.includes('실시간') || source.includes('Yahoo') || source.includes('Claude');
     
     // 상승여력 계산
     const current = parseInt(String(currentPrice).replace(/[^0-9]/g, '')) || 0;
