@@ -318,32 +318,174 @@ function filterAndScoreNews(newsItems, query, topicType) {
 }
 
 // ============================================
-// 4. 주가 데이터 (Yahoo Finance API)
+// 4. 주가 데이터 (다중 소스: Yahoo → Claude 웹검색)
 // ============================================
 async function getStockData(query) {
   const ticker = getTickerFromQuery(query);
+  const companyName = extractCompanyName(query);
   
-  if (!ticker) {
-    console.log('티커 매핑 없음:', query);
-    return null;
+  console.log('주가 조회 시작:', query, '티커:', ticker);
+
+  // 1차: Yahoo Finance API 시도
+  if (ticker) {
+    const yahooData = await fetchYahooFinance(ticker);
+    if (yahooData && yahooData.currentPrice) {
+      console.log('✅ Yahoo Finance 성공:', yahooData.currentPrice);
+      return {
+        ...yahooData,
+        source: 'Yahoo Finance (실시간)',
+        warning: null
+      };
+    }
   }
 
-  console.log('주가 조회 시도:', ticker);
+  console.log('⚠️ Yahoo Finance 실패 - Claude 웹검색 시도...');
 
-  // ⭐ Yahoo Finance API만 시도 (하드코딩 fallback 없음!)
-  const stockData = await fetchYahooFinance(ticker);
-  
-  if (stockData) {
+  // 2차: Claude AI 웹검색으로 주가 찾기
+  const claudeData = await fetchStockWithClaude(companyName || query);
+  if (claudeData && claudeData.currentPrice) {
+    console.log('✅ Claude 웹검색 성공:', claudeData.currentPrice);
     return {
-      ...stockData,
-      source: 'Yahoo Finance (실시간)',
-      warning: null // 실시간이므로 경고 없음
+      ...claudeData,
+      source: 'Claude AI (웹검색)',
+      warning: null
     };
   }
 
-  // API 실패 시 null 반환 (하드코딩 사용 안 함!)
-  console.log('Yahoo Finance API 실패 - 주가 데이터 없음');
+  console.log('❌ 모든 소스 실패 - 주가 데이터 없음');
   return null;
+}
+
+// Claude AI로 주가 검색
+async function fetchStockWithClaude(companyName) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  
+  if (!apiKey) {
+    console.error('ANTHROPIC_API_KEY 없음');
+    return null;
+  }
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 500,
+        messages: [
+          {
+            role: 'user',
+            content: `"${companyName}" 현재 주가를 검색해서 다음 JSON 형식으로만 응답해줘. 다른 설명 없이 JSON만:
+
+{
+  "currentPrice": 현재주가(숫자만, 원 단위),
+  "change": 전일대비변동(숫자, 예: -500 또는 1200),
+  "changePercent": 등락률(숫자, 예: -0.5 또는 1.2),
+  "marketCap": 시가총액(숫자, 원 단위),
+  "per": PER(숫자)
+}
+
+주가를 찾을 수 없으면 {"error": "not found"} 로 응답해.`
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      console.error('Claude API 응답 오류:', response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    const text = data.content[0].text;
+    
+    // JSON 파싱 시도
+    try {
+      // JSON 블록 추출 (```json ... ``` 또는 순수 JSON)
+      let jsonStr = text;
+      const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[1];
+      } else {
+        // { } 블록 추출
+        const braceMatch = text.match(/\{[\s\S]*\}/);
+        if (braceMatch) {
+          jsonStr = braceMatch[0];
+        }
+      }
+      
+      const parsed = JSON.parse(jsonStr);
+      
+      if (parsed.error || !parsed.currentPrice) {
+        return null;
+      }
+
+      // 목표가 계산 (현재가 + 20%)
+      const targetPrice = parsed.currentPrice ? Math.round(parsed.currentPrice * 1.2) : null;
+
+      return {
+        currentPrice: parsed.currentPrice,
+        previousClose: parsed.currentPrice - (parsed.change || 0),
+        change: parsed.change || 0,
+        changePercent: parsed.changePercent || 0,
+        marketCap: parsed.marketCap || null,
+        pe: parsed.per || null,
+        targetPrice: targetPrice
+      };
+
+    } catch (parseError) {
+      console.error('Claude 응답 파싱 실패:', parseError.message);
+      console.log('원본 응답:', text);
+      return null;
+    }
+
+  } catch (error) {
+    console.error('Claude 주가 검색 오류:', error.message);
+    return null;
+  }
+}
+
+// 회사명 추출
+function extractCompanyName(query) {
+  const q = query.toLowerCase().replace(/\s+/g, '');
+  
+  const companyNames = {
+    '삼성전자': '삼성전자',
+    '삼성': '삼성전자',
+    'sk하이닉스': 'SK하이닉스',
+    'sk': 'SK하이닉스',
+    '하이닉스': 'SK하이닉스',
+    '네이버': '네이버',
+    '카카오': '카카오',
+    '현대차': '현대자동차',
+    '현대자동차': '현대자동차',
+    'lg전자': 'LG전자',
+    'lg': 'LG전자',
+    '포스코': '포스코홀딩스',
+    '셀트리온': '셀트리온',
+    '삼성바이오': '삼성바이오로직스',
+    '카카오뱅크': '카카오뱅크',
+    '크래프톤': '크래프톤',
+    '엔씨소프트': '엔씨소프트',
+    '현대모비스': '현대모비스',
+    '기아': '기아',
+    'lg화학': 'LG화학',
+    'lg에너지솔루션': 'LG에너지솔루션',
+    '삼성sdi': '삼성SDI',
+    '한화에어로스페이스': '한화에어로스페이스'
+  };
+
+  for (const [key, name] of Object.entries(companyNames)) {
+    if (q.includes(key)) {
+      return name;
+    }
+  }
+
+  return query; // 매핑 없으면 원래 쿼리 반환
 }
 
 // Yahoo Finance API 호출
